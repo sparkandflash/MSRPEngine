@@ -50,3 +50,7 @@ func NewEmbeddedResponder(config Config) (*EmbeddedResponder, error) {
 func (r *EmbeddedResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
 	return r.runner.Respond(ctx, prompt, mindState, history, episodes)
 }
+
+func (r *EmbeddedResponder) RespondProactive(ctx context.Context, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
+	return r.runner.RespondProactive(ctx, mindState, history, episodes)
+}

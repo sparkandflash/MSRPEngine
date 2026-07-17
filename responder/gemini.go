@@ -53,6 +53,19 @@ type geminiGenerateResponse struct {
 }
 
 func (r *GeminiResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
+	systemPrompt := prompts.GetResponderPrompt()
+	if r.config.SystemInstruction != "" {
+		systemPrompt = r.config.SystemInstruction
+	}
+	return r.respondInternal(ctx, prompt, mindState, history, episodes, systemPrompt)
+}
+
+func (r *GeminiResponder) RespondProactive(ctx context.Context, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
+	systemPrompt := prompts.GetProactivePrompt()
+	return r.respondInternal(ctx, "[System: The user has been silent. Initiate conversation.]", mindState, history, episodes, systemPrompt)
+}
+
+func (r *GeminiResponder) respondInternal(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary, systemPrompt string) (string, string, error) {
 	if r.config.APIKey == "" {
 		return "", "", fmt.Errorf("Gemini API key is required but missing from environment variables (set LYRA_API_KEY)")
 	}
@@ -81,11 +94,6 @@ func (r *GeminiResponder) Respond(ctx context.Context, prompt string, mindState 
 				},
 			},
 		},
-	}
-
-	systemPrompt := prompts.GetResponderPrompt()
-	if r.config.SystemInstruction != "" {
-		systemPrompt = r.config.SystemInstruction
 	}
 
 	reqBody.SystemInstruction = &geminiSystemInstruction{

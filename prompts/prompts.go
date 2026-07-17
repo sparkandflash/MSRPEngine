@@ -48,3 +48,15 @@ var rawIntrospectionPrompt string
 func GetIntrospectionPrompt() string {
 	return strings.TrimSpace(rawIntrospectionPrompt)
 }
+
+//go:embed proactive_message.txt
+var rawProactivePrompt string
+
+// GetProactivePrompt returns the proactive message prompt combined with the personality prompt if defined.
+func GetProactivePrompt() string {
+	pers := strings.TrimSpace(rawPersonalityPrompt)
+	if pers == "" {
+		return strings.TrimSpace(rawProactivePrompt)
+	}
+	return fmt.Sprintf("%s\n\nPersonality guidelines:\n%s", strings.TrimSpace(rawProactivePrompt), pers)
+}

@@ -46,12 +46,20 @@ type openAIChatResponse struct {
 }
 
 func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
-	url := fmt.Sprintf("%s/chat/completions", r.config.BaseURL)
-
 	systemPrompt := prompts.GetResponderPrompt()
 	if r.config.SystemInstruction != "" {
 		systemPrompt = r.config.SystemInstruction
 	}
+	return r.respondInternal(ctx, prompt, mindState, history, episodes, systemPrompt)
+}
+
+func (r *OpenAIResponder) RespondProactive(ctx context.Context, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
+	systemPrompt := prompts.GetProactivePrompt()
+	return r.respondInternal(ctx, "[System: The user has been silent. Initiate conversation.]", mindState, history, episodes, systemPrompt)
+}
+
+func (r *OpenAIResponder) respondInternal(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary, systemPrompt string) (string, string, error) {
+	url := fmt.Sprintf("%s/chat/completions", r.config.BaseURL)
 
 	messages := []openAIChatMessage{
 		{

@@ -27,6 +27,7 @@ type EpisodeSummary struct {
 //   - err:             any error that occurred
 type Responder interface {
 	Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (reply string, usefulEpisodeID string, err error)
+	RespondProactive(ctx context.Context, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (reply string, usefulEpisodeID string, err error)
 }
 
 // parseResponderOutput parses the structured JSON the responder LLM is expected to return.

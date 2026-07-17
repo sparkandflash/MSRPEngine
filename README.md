@@ -30,6 +30,8 @@ While chatting with Lyra, you can use these special commands:
 *   `>>introspect <episode_id>`: Offline analysis of a specific episode to generate alternative response strategies.
 *   `exit` or `quit`: Terminates the interactive session cleanly.
 
+*Note: All `>>` commands are intercepted by the system immediately. They bypass heartrate updates, short-term memory (STM), and do not appear in the long-term history logs.*
+
 ---
 
 ## Configuration (`.env`)
@@ -111,13 +113,26 @@ Packages a GGUF model directly inside the executable using Go's `//go:embed` dir
 *   [responder/](file:///Users/pratheeksha/lyra/responder): Contains the provider-agnostic responder harness.
 *   [reactor/](file:///Users/pratheeksha/lyra/reactor): The background mindstate evaluator.
 *   [summariser/](file:///Users/pratheeksha/lyra/summariser): The background agent handling memory consolidation.
-*   [idle_methods/](file:///Users/pratheeksha/lyra/idle_methods): Features invoked explicitly or on idle (consolidation, episodic memory).
+*   [idle_methods/](file:///Users/pratheeksha/lyra/idle_methods): Features invoked explicitly or on idle (consolidation, episodic memory, reflection).
 *   [consolidator/](file:///Users/pratheeksha/lyra/consolidator): Core history and STM state manager.
+*   [escalator/](file:///Users/pratheeksha/lyra/escalator): The event-driven rule engine and background scheduler handling proactive autonomy.
+
+---
+
+## Escalator Module (Autonomy & Proactive Messaging)
+
+The **Escalator Module** turns Lyra into a proactive participant. Driven by an offline, deterministic Rule Engine and a background Scheduler:
+
+*   **Heartrate & Decay:** The engine maintains a runtime `Heartrate` (BPM) that naturally decays toward resting levels over time, but spikes dynamically during intense emotional conversations.
+*   **Background Scheduler:** A concurrent 5-second ticker evaluates the conversation state against the Rule Engine and emits background events.
+*   **Proactive Messaging:** If the user is silent for an extended period while Lyra's attention and heartrate are elevated, the engine triggers a `PROACTIVE_MESSAGE` event. Lyra temporarily locks the user's terminal input and gracefully initiates conversation using a dedicated prompt designed for proactive engagement.
+*   **Offline Event Scheduling:** The Escalator also assumes responsibility for automatically triggering the Reflector and Summariser (`CONSOLIDATE`, `REFLECT`, `INTROSPECT`) entirely in the background when pacing allows.
 
 ---
 
 ## Roadmap
 
-The following modules are planned to complete the Lyra architecture:
+The core architecture for Lyra is complete! Future improvements will focus on:
 
-*   **Escalator Module:** A dynamic event-trigger system that monitors the mindstate over time. It will introduce "decay" mechanics and trigger spontaneous conversational shifts, proactive questions, or distinct behavioral changes when emotional thresholds are crossed (or when the conversation stagnates).
+*   **Multi-Modal Integrations:** Expanding input to support voice or vision.
+*   **Refined Decay Algorithms:** Tuning the Rule Engine metrics and scaling up model complexity.

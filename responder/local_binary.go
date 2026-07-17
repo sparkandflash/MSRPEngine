@@ -26,6 +26,19 @@ func NewLocalBinaryResponder(config Config) *LocalBinaryResponder {
 }
 
 func (r *LocalBinaryResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
+	systemPrompt := prompts.GetResponderPrompt()
+	if r.config.SystemInstruction != "" {
+		systemPrompt = r.config.SystemInstruction
+	}
+	return r.respondInternal(ctx, prompt, mindState, history, episodes, systemPrompt)
+}
+
+func (r *LocalBinaryResponder) RespondProactive(ctx context.Context, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
+	systemPrompt := prompts.GetProactivePrompt()
+	return r.respondInternal(ctx, "[System: The user has been silent. Initiate conversation.]", mindState, history, episodes, systemPrompt)
+}
+
+func (r *LocalBinaryResponder) respondInternal(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary, systemPrompt string) (string, string, error) {
 	// Construct the JSON payload for the prompt
 	userPayload := map[string]interface{}{
 		"message":   prompt,
@@ -38,12 +51,6 @@ func (r *LocalBinaryResponder) Respond(ctx context.Context, prompt string, mindS
 		return "", "", fmt.Errorf("failed to marshal user payload: %w", err)
 	}
 	jsonPrompt := string(payloadBytes)
-
-	// Fallback to prompts.GetResponderPrompt() if system instruction is empty
-	systemPrompt := prompts.GetResponderPrompt()
-	if r.config.SystemInstruction != "" {
-		systemPrompt = r.config.SystemInstruction
-	}
 
 	// For llama-cli: -m <model> -p "<prompt>"
 	// We format it with a standard chat template, embedding the system prompt and the JSON user prompt
