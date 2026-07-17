@@ -25,16 +25,17 @@ func NewLocalBinaryResponder(config Config) *LocalBinaryResponder {
 	return &LocalBinaryResponder{config: config}
 }
 
-func (r *LocalBinaryResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message) (string, error) {
+func (r *LocalBinaryResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
 	// Construct the JSON payload for the prompt
 	userPayload := map[string]interface{}{
 		"message":   prompt,
 		"mindstate": mindState,
 		"history":   history,
+		"episodes":  episodes,
 	}
 	payloadBytes, err := json.Marshal(userPayload)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal user payload: %w", err)
+		return "", "", fmt.Errorf("failed to marshal user payload: %w", err)
 	}
 	jsonPrompt := string(payloadBytes)
 
@@ -64,12 +65,10 @@ func (r *LocalBinaryResponder) Respond(ctx context.Context, prompt string, mindS
 
 	err = cmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("local binary execution failed: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
+		return "", "", fmt.Errorf("local binary execution failed: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
 	}
 
 	output := stdout.String()
-
 	output = strings.TrimPrefix(output, fullPrompt)
-
-	return strings.TrimSpace(output), nil
+	return parseResponderOutput(strings.TrimSpace(output))
 }

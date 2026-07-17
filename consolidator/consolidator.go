@@ -8,10 +8,12 @@ import (
 	"time"
 )
 
-// Message represents a single chat turn with a role and content.
+// Message represents a single chat turn with a role, content, mindstate, and stored flag.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	MindState string `json:"mindstate,omitempty"`
+	Stored    bool   `json:"stored"`
 }
 
 // STMmanager manages the rolling short term memory of the chat.
@@ -31,6 +33,16 @@ func NewSTMmanager(maxChars int) *STMmanager {
 // Get returns all messages currently stored in short term memory.
 func (m *STMmanager) Get() []Message {
 	return m.messages
+}
+
+// GetNoFlags returns all messages in STM with only Role and Content populated.
+// MindState and Stored flags are omitted — this is the clean view sent to the responder LLM.
+func (m *STMmanager) GetNoFlags() []Message {
+	clean := make([]Message, len(m.messages))
+	for i, msg := range m.messages {
+		clean[i] = Message{Role: msg.Role, Content: msg.Content}
+	}
+	return clean
 }
 
 // Update appends a message and discards older ones (FIFO) until the total character length is within the maxChars limit.
@@ -84,8 +96,34 @@ func NewHistoryManager() (*HistoryManager, error) {
 // TODO: Support loading a past conversation by sessionId (SessionID)
 
 // Save appends a new message to the persistent history and writes the full log to disk.
-func (h *HistoryManager) Save(role string, content string) error {
-	h.messages = append(h.messages, Message{Role: role, Content: content})
+func (h *HistoryManager) Save(role string, content string, mindState string) error {
+	h.messages = append(h.messages, Message{Role: role, Content: content, MindState: mindState, Stored: false})
+
+	data, err := json.MarshalIndent(h.messages, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to serialize history: %w", err)
+	}
+
+	if err := os.WriteFile(h.filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write history to disk: %w", err)
+	}
+
+	return nil
+}
+
+// GetMessages returns a copy of all messages currently stored in the history manager.
+func (h *HistoryManager) GetMessages() []Message {
+	return h.messages
+}
+
+// MarkStored flags messages in the range [start, end) as stored and writes the updated array back to disk.
+func (h *HistoryManager) MarkStored(start, end int) error {
+	if start < 0 || end > len(h.messages) || start > end {
+		return fmt.Errorf("invalid range: [%d, %d)", start, end)
+	}
+	for i := start; i < end; i++ {
+		h.messages[i].Stored = true
+	}
 
 	data, err := json.MarshalIndent(h.messages, "", "  ")
 	if err != nil {

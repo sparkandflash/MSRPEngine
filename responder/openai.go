@@ -45,7 +45,7 @@ type openAIChatResponse struct {
 	} `json:"error"`
 }
 
-func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message) (string, error) {
+func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
 	url := fmt.Sprintf("%s/chat/completions", r.config.BaseURL)
 
 	systemPrompt := prompts.GetResponderPrompt()
@@ -60,15 +60,16 @@ func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, mindState 
 		},
 	}
 
-	// Wrap user input, mindstate value, and context history in a JSON object.
+	// Wrap user input, mindstate, short-term history, and episodic memory in a JSON object.
 	userPayload := map[string]interface{}{
 		"message":   prompt,
 		"mindstate": mindState,
 		"history":   history,
+		"episodes":  episodes,
 	}
 	payloadBytes, err := json.Marshal(userPayload)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal user payload: %w", err)
+		return "", "", fmt.Errorf("failed to marshal user payload: %w", err)
 	}
 
 	messages = append(messages, openAIChatMessage{
@@ -83,12 +84,12 @@ func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, mindState 
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return "", "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -99,7 +100,7 @@ func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, mindState 
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("http request failed: %w", err)
+		return "", "", fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -107,19 +108,20 @@ func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, mindState 
 		var apiErr openAIChatResponse
 		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
 		if apiErr.Error != nil {
-			return "", fmt.Errorf("API error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
+			return "", "", fmt.Errorf("API returned non-200 status: %d - %s", resp.StatusCode, apiErr.Error.Message)
 		}
-		return "", fmt.Errorf("API returned non-200 status: %d", resp.StatusCode)
+		return "", "", fmt.Errorf("API returned non-200 status: %d", resp.StatusCode)
 	}
 
 	var chatResp openAIChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
+		return "", "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	if len(chatResp.Choices) == 0 {
-		return "", fmt.Errorf("no response choices returned by model")
+		return "", "", fmt.Errorf("no response choices returned by model")
 	}
 
-	return chatResp.Choices[0].Message.Content, nil
+	rawContent := chatResp.Choices[0].Message.Content
+	return parseResponderOutput(rawContent)
 }

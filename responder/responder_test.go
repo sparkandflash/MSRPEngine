@@ -85,7 +85,7 @@ func TestMockResponder(t *testing.T) {
 	history := []consolidator.Message{
 		{Role: "user", Content: "prev"},
 	}
-	res, err := r.Respond(context.Background(), "hello", "0.90:0.30:0.50:0.70", history)
+	res, _, err := r.Respond(context.Background(), "hello", "0.90:0.30:0.50:0.70", history, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

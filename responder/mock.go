@@ -16,10 +16,11 @@ func NewMockResponder(config Config) *MockResponder {
 	return &MockResponder{config: config}
 }
 
-func (r *MockResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message) (string, error) {
+func (r *MockResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
 	systemPrompt := prompts.GetResponderPrompt()
 	if r.config.SystemInstruction != "" {
 		systemPrompt = r.config.SystemInstruction
 	}
-	return fmt.Sprintf("[Mock Response] (System Instruction: %q, Mind State: %q, History Size: %d) You said: %s", systemPrompt, mindState, len(history), prompt), nil
+	reply := fmt.Sprintf("[Mock Response] (System Instruction: %q, Mind State: %q, History Size: %d, Episodes: %d) You said: %s", systemPrompt, mindState, len(history), len(episodes), prompt)
+	return reply, "", nil
 }

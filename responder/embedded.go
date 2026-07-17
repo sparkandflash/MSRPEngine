@@ -47,6 +47,6 @@ func NewEmbeddedResponder(config Config) (*EmbeddedResponder, error) {
 	}, nil
 }
 
-func (r *EmbeddedResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message) (string, error) {
-	return r.runner.Respond(ctx, prompt, mindState, history)
+func (r *EmbeddedResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary) (string, string, error) {
+	return r.runner.Respond(ctx, prompt, mindState, history, episodes)
 }

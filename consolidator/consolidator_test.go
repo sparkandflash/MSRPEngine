@@ -57,11 +57,11 @@ func TestHistoryManager(t *testing.T) {
 	defer os.Remove(filePath) // Cleanup test file
 
 	// Save some chat turns
-	err = hm.Save("user", "ping")
+	err = hm.Save("user", "ping", "0.90:0.30:0.50:0.70")
 	if err != nil {
 		t.Fatalf("failed to save user message: %v", err)
 	}
-	err = hm.Save("assistant", "pong")
+	err = hm.Save("assistant", "pong", "0.90:0.30:0.50:0.70")
 	if err != nil {
 		t.Fatalf("failed to save assistant message: %v", err)
 	}
@@ -81,10 +81,30 @@ func TestHistoryManager(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages logged, got %d", len(msgs))
 	}
-	if msgs[0].Role != "user" || msgs[0].Content != "ping" {
+	if msgs[0].Role != "user" || msgs[0].Content != "ping" || msgs[0].MindState != "0.90:0.30:0.50:0.70" || msgs[0].Stored {
 		t.Errorf("unexpected first logged message: %+v", msgs[0])
 	}
-	if msgs[1].Role != "assistant" || msgs[1].Content != "pong" {
+	if msgs[1].Role != "assistant" || msgs[1].Content != "pong" || msgs[1].MindState != "0.90:0.30:0.50:0.70" || msgs[1].Stored {
 		t.Errorf("unexpected second logged message: %+v", msgs[1])
+	}
+
+	// Test MarkStored
+	err = hm.MarkStored(0, 2)
+	if err != nil {
+		t.Fatalf("failed to mark messages as stored: %v", err)
+	}
+
+	// Re-verify from disk
+	data, err = os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read written history file again: %v", err)
+	}
+	err = json.Unmarshal(data, &msgs)
+	if err != nil {
+		t.Fatalf("failed to parse logged history JSON again: %v", err)
+	}
+
+	if !msgs[0].Stored || !msgs[1].Stored {
+		t.Errorf("expected messages to be marked as stored, got: %+v, %+v", msgs[0], msgs[1])
 	}
 }
