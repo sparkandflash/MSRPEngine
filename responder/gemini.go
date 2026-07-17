@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"lyra/consolidator"
 )
 
 type GeminiResponder struct {
@@ -48,7 +50,7 @@ type geminiGenerateResponse struct {
 	} `json:"error"`
 }
 
-func (r *GeminiResponder) Respond(ctx context.Context, prompt string) (string, error) {
+func (r *GeminiResponder) Respond(ctx context.Context, prompt string, heartRate float64, history []consolidator.Message) (string, error) {
 	if r.config.APIKey == "" {
 		return "", fmt.Errorf("Gemini API key is required but missing from environment variables (set LYRA_API_KEY)")
 	}
@@ -56,23 +58,37 @@ func (r *GeminiResponder) Respond(ctx context.Context, prompt string) (string, e
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
 		r.config.Model, r.config.APIKey)
 
+	// Wrap user input, heartrate value, and context history in a JSON object.
+	userPayload := map[string]interface{}{
+		"message":   prompt,
+		"heartrate": heartRate,
+		"history":   history,
+	}
+	payloadBytes, err := json.Marshal(userPayload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal user payload: %w", err)
+	}
+
 	reqBody := geminiGenerateRequest{
 		Contents: []geminiContent{
 			{
 				Role: "user",
 				Parts: []geminiPart{
-					{Text: prompt},
+					{Text: string(payloadBytes)},
 				},
 			},
 		},
 	}
 
+	systemPrompt := DefaultSystemInstruction
 	if r.config.SystemInstruction != "" {
-		reqBody.SystemInstruction = &geminiSystemInstruction{
-			Parts: []geminiPart{
-				{Text: r.config.SystemInstruction},
-			},
-		}
+		systemPrompt = r.config.SystemInstruction
+	}
+
+	reqBody.SystemInstruction = &geminiSystemInstruction{
+		Parts: []geminiPart{
+			{Text: systemPrompt},
+		},
 	}
 
 	jsonData, err := json.Marshal(reqBody)

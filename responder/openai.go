@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"lyra/consolidator"
 )
 
 type OpenAIResponder struct {
@@ -42,19 +44,35 @@ type openAIChatResponse struct {
 	} `json:"error"`
 }
 
-func (r *OpenAIResponder) Respond(ctx context.Context, prompt string) (string, error) {
+func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, heartRate float64, history []consolidator.Message) (string, error) {
 	url := fmt.Sprintf("%s/chat/completions", r.config.BaseURL)
 
-	messages := []openAIChatMessage{}
+	systemPrompt := DefaultSystemInstruction
 	if r.config.SystemInstruction != "" {
-		messages = append(messages, openAIChatMessage{
-			Role:    "system",
-			Content: r.config.SystemInstruction,
-		})
+		systemPrompt = r.config.SystemInstruction
 	}
+
+	messages := []openAIChatMessage{
+		{
+			Role:    "system",
+			Content: systemPrompt,
+		},
+	}
+
+	// Wrap user input, heartrate value, and context history in a JSON object.
+	userPayload := map[string]interface{}{
+		"message":   prompt,
+		"heartrate": heartRate,
+		"history":   history,
+	}
+	payloadBytes, err := json.Marshal(userPayload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal user payload: %w", err)
+	}
+
 	messages = append(messages, openAIChatMessage{
 		Role:    "user",
-		Content: prompt,
+		Content: string(payloadBytes),
 	})
 
 	reqBody := openAIChatRequest{

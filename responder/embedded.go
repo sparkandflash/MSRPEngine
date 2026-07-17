@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"lyra/consolidator"
 )
 
 //go:embed models/default.gguf
@@ -45,6 +47,6 @@ func NewEmbeddedResponder(config Config) (*EmbeddedResponder, error) {
 	}, nil
 }
 
-func (r *EmbeddedResponder) Respond(ctx context.Context, prompt string) (string, error) {
-	return r.runner.Respond(ctx, prompt)
+func (r *EmbeddedResponder) Respond(ctx context.Context, prompt string, heartRate float64, history []consolidator.Message) (string, error) {
+	return r.runner.Respond(ctx, prompt, heartRate, history)
 }

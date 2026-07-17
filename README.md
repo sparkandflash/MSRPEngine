@@ -38,6 +38,23 @@ Lyra automatically loads environment variables from a local `.env` file at start
 | `LYRA_MODEL` | Model ID/name to query, or the GGUF model path (for `local-binary` type). | `llama3.1-8b`, `gemini-2.5-flash`, `./models/default.gguf` |
 | `LYRA_LOCAL_BINARY_PATH` | Path to the local CLI model runner (for `local-binary` or `embedded` type). | `llama-cli`, `./llamafile-0.8.18` |
 | `LYRA_SYSTEM_INSTRUCTION` | The system prompt to govern the behavior and personality of the responder. | `"You are Lyra, a friendly and helpful AI chatbot."` |
+| `LYRA_MAX_WORKING_MEMORY_CHARS` | Capping limit in characters for the rolling Short-Term Memory. Defaults to 1500 if empty. | `1000`, `1500`, `2000` |
+
+---
+
+## Memory & Conversation Logging
+
+Lyra includes a `consolidator` package that handles conversation history in two distinct ways:
+
+### 1. Short-Term Memory (STM)
+A rolling history is sent inside the JSON payload to the model API under the `"history"` key. This memory is automatically pruned (FIFO) to ensure the total size of all message content is less than or equal to `LYRA_MAX_WORKING_MEMORY_CHARS` (default `1500` characters). This limits token usage while maintaining context.
+
+### 2. Long-Term Persistent Logging
+Every single message (user inputs and assistant replies) is saved to a session-specific JSON log file located at:
+`Context/conversationHistory/<session-timestamp>.json`
+
+*(Note: Loading past conversations via a `sessionId` is currently on the TODO list).*
+
 
 ---
 

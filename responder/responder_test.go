@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"lyra/consolidator"
 )
 
 func TestNewResponderFromEnv(t *testing.T) {
@@ -80,13 +82,22 @@ func TestMockResponder(t *testing.T) {
 		SystemInstruction: "test instruction",
 	}
 	r := NewMockResponder(config)
-	res, err := r.Respond(context.Background(), "hello")
+	history := []consolidator.Message{
+		{Role: "user", Content: "prev"},
+	}
+	res, err := r.Respond(context.Background(), "hello", 0.35, history)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if !strings.Contains(res, "test instruction") {
 		t.Errorf("expected output to contain system instruction, got %s", res)
+	}
+	if !strings.Contains(res, "0.35") {
+		t.Errorf("expected output to contain heart rate 0.35, got %s", res)
+	}
+	if !strings.Contains(res, "History Size: 1") {
+		t.Errorf("expected output to contain history size 1, got %s", res)
 	}
 	if !strings.Contains(res, "hello") {
 		t.Errorf("expected output to contain prompt, got %s", res)
