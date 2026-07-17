@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"lyra/consolidator"
+	"lyra/prompts"
 )
 
 type MockResponder struct {
@@ -15,10 +16,10 @@ func NewMockResponder(config Config) *MockResponder {
 	return &MockResponder{config: config}
 }
 
-func (r *MockResponder) Respond(ctx context.Context, prompt string, heartRate float64, history []consolidator.Message) (string, error) {
-	systemPrompt := DefaultSystemInstruction
+func (r *MockResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message) (string, error) {
+	systemPrompt := prompts.GetResponderPrompt()
 	if r.config.SystemInstruction != "" {
 		systemPrompt = r.config.SystemInstruction
 	}
-	return fmt.Sprintf("[Mock Response] (System Instruction: %q, Heart Rate: %.2f, History Size: %d) You said: %s", systemPrompt, heartRate, len(history), prompt), nil
+	return fmt.Sprintf("[Mock Response] (System Instruction: %q, Mind State: %q, History Size: %d) You said: %s", systemPrompt, mindState, len(history), prompt), nil
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"lyra/consolidator"
+	"lyra/prompts"
 )
 
 type OpenAIResponder struct {
@@ -44,10 +45,10 @@ type openAIChatResponse struct {
 	} `json:"error"`
 }
 
-func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, heartRate float64, history []consolidator.Message) (string, error) {
+func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message) (string, error) {
 	url := fmt.Sprintf("%s/chat/completions", r.config.BaseURL)
 
-	systemPrompt := DefaultSystemInstruction
+	systemPrompt := prompts.GetResponderPrompt()
 	if r.config.SystemInstruction != "" {
 		systemPrompt = r.config.SystemInstruction
 	}
@@ -59,10 +60,10 @@ func (r *OpenAIResponder) Respond(ctx context.Context, prompt string, heartRate 
 		},
 	}
 
-	// Wrap user input, heartrate value, and context history in a JSON object.
+	// Wrap user input, mindstate value, and context history in a JSON object.
 	userPayload := map[string]interface{}{
 		"message":   prompt,
-		"heartrate": heartRate,
+		"mindstate": mindState,
 		"history":   history,
 	}
 	payloadBytes, err := json.Marshal(userPayload)

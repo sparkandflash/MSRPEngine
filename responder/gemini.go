@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"lyra/consolidator"
+	"lyra/prompts"
 )
 
 type GeminiResponder struct {
@@ -42,7 +43,8 @@ type geminiGenerateRequest struct {
 
 type geminiGenerateResponse struct {
 	Candidates []struct {
-		Content geminiContent `json:"content"`
+		Content      geminiContent `json:"content"`
+		FinishReason string        `json:"finishReason,omitempty"`
 	} `json:"candidates"`
 	Error *struct {
 		Message string `json:"message"`
@@ -50,7 +52,7 @@ type geminiGenerateResponse struct {
 	} `json:"error"`
 }
 
-func (r *GeminiResponder) Respond(ctx context.Context, prompt string, heartRate float64, history []consolidator.Message) (string, error) {
+func (r *GeminiResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message) (string, error) {
 	if r.config.APIKey == "" {
 		return "", fmt.Errorf("Gemini API key is required but missing from environment variables (set LYRA_API_KEY)")
 	}
@@ -58,10 +60,10 @@ func (r *GeminiResponder) Respond(ctx context.Context, prompt string, heartRate 
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
 		r.config.Model, r.config.APIKey)
 
-	// Wrap user input, heartrate value, and context history in a JSON object.
+	// Wrap user input, mindstate value, and context history in a JSON object.
 	userPayload := map[string]interface{}{
 		"message":   prompt,
-		"heartrate": heartRate,
+		"mindstate": mindState,
 		"history":   history,
 	}
 	payloadBytes, err := json.Marshal(userPayload)
@@ -80,7 +82,7 @@ func (r *GeminiResponder) Respond(ctx context.Context, prompt string, heartRate 
 		},
 	}
 
-	systemPrompt := DefaultSystemInstruction
+	systemPrompt := prompts.GetResponderPrompt()
 	if r.config.SystemInstruction != "" {
 		systemPrompt = r.config.SystemInstruction
 	}
@@ -123,9 +125,21 @@ func (r *GeminiResponder) Respond(ctx context.Context, prompt string, heartRate 
 		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+	if geminiResp.Error != nil {
+		return "", fmt.Errorf("Gemini API error: %s (Status: %s)", geminiResp.Error.Message, geminiResp.Error.Status)
+	}
+
+	if len(geminiResp.Candidates) == 0 {
 		return "", fmt.Errorf("no response candidates returned by Gemini")
 	}
 
-	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
+	candidate := geminiResp.Candidates[0]
+	if len(candidate.Content.Parts) == 0 {
+		if candidate.FinishReason != "" && candidate.FinishReason != "STOP" {
+			return "", fmt.Errorf("Gemini response was blocked/terminated. Reason: %s", candidate.FinishReason)
+		}
+		return "", fmt.Errorf("no response candidate content returned by Gemini")
+	}
+
+	return candidate.Content.Parts[0].Text, nil
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"lyra/consolidator"
+	"lyra/prompts"
 )
 
 type LocalBinaryResponder struct {
@@ -24,11 +25,11 @@ func NewLocalBinaryResponder(config Config) *LocalBinaryResponder {
 	return &LocalBinaryResponder{config: config}
 }
 
-func (r *LocalBinaryResponder) Respond(ctx context.Context, prompt string, heartRate float64, history []consolidator.Message) (string, error) {
+func (r *LocalBinaryResponder) Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message) (string, error) {
 	// Construct the JSON payload for the prompt
 	userPayload := map[string]interface{}{
 		"message":   prompt,
-		"heartrate": heartRate,
+		"mindstate": mindState,
 		"history":   history,
 	}
 	payloadBytes, err := json.Marshal(userPayload)
@@ -37,8 +38,8 @@ func (r *LocalBinaryResponder) Respond(ctx context.Context, prompt string, heart
 	}
 	jsonPrompt := string(payloadBytes)
 
-	// Fallback to DefaultSystemInstruction if system instruction is empty
-	systemPrompt := DefaultSystemInstruction
+	// Fallback to prompts.GetResponderPrompt() if system instruction is empty
+	systemPrompt := prompts.GetResponderPrompt()
 	if r.config.SystemInstruction != "" {
 		systemPrompt = r.config.SystemInstruction
 	}

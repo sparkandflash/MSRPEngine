@@ -85,7 +85,7 @@ func TestMockResponder(t *testing.T) {
 	history := []consolidator.Message{
 		{Role: "user", Content: "prev"},
 	}
-	res, err := r.Respond(context.Background(), "hello", 0.35, history)
+	res, err := r.Respond(context.Background(), "hello", "0.90:0.30:0.50:0.70", history)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,8 +93,8 @@ func TestMockResponder(t *testing.T) {
 	if !strings.Contains(res, "test instruction") {
 		t.Errorf("expected output to contain system instruction, got %s", res)
 	}
-	if !strings.Contains(res, "0.35") {
-		t.Errorf("expected output to contain heart rate 0.35, got %s", res)
+	if !strings.Contains(res, "0.90:0.30:0.50:0.70") {
+		t.Errorf("expected output to contain mind state 0.90:0.30:0.50:0.70, got %s", res)
 	}
 	if !strings.Contains(res, "History Size: 1") {
 		t.Errorf("expected output to contain history size 1, got %s", res)

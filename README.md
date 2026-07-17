@@ -39,8 +39,13 @@ Lyra automatically loads environment variables from a local `.env` file at start
 | `LYRA_LOCAL_BINARY_PATH` | Path to the local CLI model runner (for `local-binary` or `embedded` type). | `llama-cli`, `./llamafile-0.8.18` |
 | `LYRA_SYSTEM_INSTRUCTION` | The system prompt to govern the behavior and personality of the responder. | `"You are Lyra, a friendly and helpful AI chatbot."` |
 | `LYRA_MAX_WORKING_MEMORY_CHARS` | Capping limit in characters for the rolling Short-Term Memory. Defaults to 1500 if empty. | `1000`, `1500`, `2000` |
+| `LYRA_REACTOR_TYPE` | Selected model provider for the **Reactor Agent**. Falls back to `LYRA_RESPONDER_TYPE`. | `gemini`, `openai`, `mock`, etc. |
+| `LYRA_REACTOR_API_KEY` | API Key for the **Reactor Agent**. Falls back to `LYRA_API_KEY`. | *Your Gemini API Key* |
+| `LYRA_REACTOR_MODEL` | Model ID/name for the **Reactor Agent**. Falls back to `LYRA_MODEL`. | `gemini-2.5-flash` |
+| `LYRA_REACTOR_BASE_URL` | Base API endpoint for the **Reactor Agent**. Falls back to `LYRA_BASE_URL`. | `https://generativelanguage.googleapis.com` |
 
 ---
+
 
 ## Memory & Conversation Logging
 
@@ -54,6 +59,18 @@ Every single message (user inputs and assistant replies) is saved to a session-s
 `Context/conversationHistory/<session-timestamp>.json`
 
 *(Note: Loading past conversations via a `sessionId` is currently on the TODO list).*
+
+---
+
+## Reactor Agent (Heart Rate Adjuster)
+
+Lyra features a **Reactor Agent** packaged in `reactor/` that monitors conversation flow in the background:
+*   **Triggers:** Automatically executes after every short-term memory update (after the user texts, and after Lyra responds).
+*   **Function:** Queries the LLM (reasoning mode) to evaluate emotional volatility, tension escalation, and calming de-escalation of the conversation.
+*   **Output:** Returns a structured JSON containing the stability direction (`increase`, `decrease`, or `stable`) and the change magnitude (from `0.00` to `0.90`).
+*   **Impact:** Updates the active heart rate in real-time (keeping it between `0.1` and `0.9`). This directly scales the emotional intensity of Lyra's responses.
+*   **Mock Mode:** Evaluates keyword sentiment triggers offline if no API keys are loaded.
+
 
 
 ---

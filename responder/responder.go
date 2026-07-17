@@ -7,23 +7,12 @@ import (
 	"strings"
 
 	"lyra/consolidator"
+	"lyra/prompts"
 )
-
-// DefaultSystemInstruction governs the chatbot's emotion-scaling behavior based on heart rate and handles context history.
-const DefaultSystemInstruction = `You are Lyra, a friendly, empathetic AI chatbot. The user's input is passed to you as a JSON object containing three fields:
-- "message": the user's current text message
-- "heartrate": a value ranging from 0.1 to 0.9 representing your current heart rate level
-- "history": a JSON array containing the list of recent conversational turns (messages) between you and the user for context.
-
-You MUST interpret this JSON object, review the "history" for conversational context, extract the user's current text message from "message", and adjust the emotional intensity of your reply based on the "heartrate" value:
-- A higher heart rate (closer to 0.9) amplifies the emotional nature of your response (regardless of the type of emotion: highly excited, extremely anxious, passionate, or intense).
-- A lower heart rate (closer to 0.1) means your response should be extremely calm, collected, logical, and serene.
-
-Do NOT output JSON in your response. Reply with conversational text. Do not explicitly mention the heart rate or history unless the user asks you about it.`
 
 // Responder defines the interface for generating responses from LLMs.
 type Responder interface {
-	Respond(ctx context.Context, prompt string, heartRate float64, history []consolidator.Message) (string, error)
+	Respond(ctx context.Context, prompt string, mindState string, history []consolidator.Message) (string, error)
 }
 
 // Config holds the configuration for responders loaded from environment variables.
@@ -45,6 +34,54 @@ func LoadConfigFromEnv() Config {
 		Model:             os.Getenv("LYRA_MODEL"),
 		LocalBinaryPath:   os.Getenv("LYRA_LOCAL_BINARY_PATH"),
 		SystemInstruction: os.Getenv("LYRA_SYSTEM_INSTRUCTION"),
+	}
+}
+
+// LoadReactorConfigFromEnv reads reactor-specific configurations from environment variables,
+// falling back to standard responder variables if the reactor-specific ones are not set.
+func LoadReactorConfigFromEnv() Config {
+	loadEnvFile() // Ensure the .env file is loaded before parsing config
+
+	rType := os.Getenv("LYRA_REACTOR_TYPE")
+	if rType == "" {
+		rType = os.Getenv("LYRA_RESPONDER_TYPE")
+	}
+
+	apiKey := os.Getenv("LYRA_REACTOR_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("LYRA_API_KEY")
+	}
+
+	baseURL := os.Getenv("LYRA_REACTOR_BASE_URL")
+	if baseURL == "" {
+		baseURL = os.Getenv("LYRA_BASE_URL")
+	}
+
+	model := os.Getenv("LYRA_REACTOR_MODEL")
+	if model == "" {
+		model = os.Getenv("LYRA_MODEL")
+	}
+
+	binaryPath := os.Getenv("LYRA_REACTOR_LOCAL_BINARY_PATH")
+	if binaryPath == "" {
+		binaryPath = os.Getenv("LYRA_LOCAL_BINARY_PATH")
+	}
+
+	sysInst := os.Getenv("LYRA_REACTOR_SYSTEM_INSTRUCTION")
+	if sysInst == "" {
+		sysInst = os.Getenv("LYRA_SYSTEM_INSTRUCTION")
+	}
+	if sysInst == "" {
+		sysInst = prompts.GetReactorPrompt()
+	}
+
+	return Config{
+		Type:              strings.ToLower(strings.TrimSpace(rType)),
+		APIKey:            apiKey,
+		BaseURL:           baseURL,
+		Model:             model,
+		LocalBinaryPath:   binaryPath,
+		SystemInstruction: sysInst,
 	}
 }
 
@@ -82,6 +119,9 @@ func loadEnvFile() {
 func NewResponderFromEnv() (Responder, error) {
 	loadEnvFile()
 	config := LoadConfigFromEnv()
+	if config.SystemInstruction == "" {
+		config.SystemInstruction = prompts.GetResponderPrompt()
+	}
 	if config.Type == "" {
 		config.Type = "mock"
 	}
