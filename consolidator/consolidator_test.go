@@ -39,7 +39,8 @@ func TestSTMmanagerCapping(t *testing.T) {
 }
 
 func TestHistoryManager(t *testing.T) {
-	hm, err := NewHistoryManager()
+	// Test NewHistoryManager
+	hm, err := NewHistoryManager("")
 	if err != nil {
 		t.Fatalf("failed to initialize HistoryManager: %v", err)
 	}

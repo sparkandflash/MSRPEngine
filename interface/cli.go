@@ -19,7 +19,7 @@ import (
 )
 
 // Run starts the interactive chat interface for Lyra.
-func Run() {
+func Run(newSession bool, reuseSession string, debugMode bool) {
 	// Initialize the responder agent from environment configuration
 	resp, err := responder.NewResponderFromEnv()
 	if err != nil {
@@ -56,14 +56,49 @@ func Run() {
 	// LYRA_EPISODE_MEMORY_CHARS controls the runtime episode pool's character budget (default 2000).
 	episodeMgr := episode_memory.LoadEpisodeMemoryManagerFromEnv()
 
+	// ── Session Resolution ───────────────────────────────────────────────────
+	historyDir := "Context/conversationHistory"
+	os.MkdirAll(historyDir, 0755)
+	lastSessionPath := historyDir + "/last_session.txt"
+	var sessionID string
+
+	if newSession {
+		sessionID = "" // HistoryManager will generate a new one
+	} else if reuseSession != "" {
+		sessionID = reuseSession
+	} else {
+		// Attempt to read the last session
+		if data, err := os.ReadFile(lastSessionPath); err == nil {
+			sessionID = strings.TrimSpace(string(data))
+		}
+	}
+
 	// Initialize long-term conversation history store
-	historyMgr, err := consolidator.NewHistoryManager()
+	historyMgr, err := consolidator.NewHistoryManager(sessionID)
 	if err != nil {
 		fmt.Printf("system error: failed to initialize history manager: %v\n", err)
 		os.Exit(1)
 	}
 
+	// Save the resolved session ID back to last_session.txt
+	os.WriteFile(lastSessionPath, []byte(historyMgr.SessionID), 0644)
+
 	mindState := "0.90:0.30:0.50:0.70"
+
+	// Restore state if messages were loaded
+	loadedMessages := historyMgr.GetMessages()
+	if len(loadedMessages) > 0 {
+		for _, msg := range loadedMessages {
+			reactorSTM.Update(msg.Role, msg.Content)
+			responderSTM.Update(msg.Role, msg.Content)
+			if msg.MindState != "" {
+				mindState = msg.MindState
+			}
+		}
+		fmt.Printf("\033[32m[Session %s Restored (Mindstate: %s)]\033[0m\n", historyMgr.SessionID, mindState)
+	} else {
+		fmt.Println("\033[32mhello, nice to meet you.\033[0m")
+	}
 
 	// State for rule engine integration
 	hasUnconsolidated := false
@@ -85,7 +120,7 @@ func Run() {
 		}
 	}()
 
-	fmt.Print("user: ")
+	fmt.Print("> ")
 	
 	for {
 		select {
@@ -138,7 +173,7 @@ func Run() {
 					}
 					
 					fmt.Print("\r\033[K") // Clear input lock text
-					fmt.Printf("lyra: %s\n", reply)
+					fmt.Printf("\033[32m%s\033[0m\n", reply)
 					
 					_ = historyMgr.Save("assistant", reply, mindState)
 					responderSTM.Update("assistant", reply)
@@ -147,11 +182,13 @@ func Run() {
 
 					if respState, err := reactorAgent.React(ctx, reactorSTM.Get()); err == nil {
 						mindState = fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", respState.ModelAttention, respState.NegativeEmotion, respState.PositiveEmotion, respState.UserAttention)
+					} else if debugMode {
+						fmt.Printf("[DEBUG] Reactor Error (Proactive): %v\n", err)
 					}
 				}
 				
 				time.Sleep(3 * time.Second)
-				fmt.Print("\r\033[Kuser: ")
+				fmt.Print("\r\033[K> ")
 			}
 
 		case rawInput := <-inputChan:
@@ -162,14 +199,14 @@ func Run() {
 
 			input := strings.TrimSpace(rawInput)
 			if input == "" {
-				fmt.Print("user: ")
+				fmt.Print("> ")
 				continue
 			}
 
 			if input == ">>debug" {
 				fmt.Printf("debug: mindstate: %s | HR: %.1f\n", mindState, sched.Engine.Heartrate)
 				fmt.Printf("debug: active episodes: %d | pinned: %q\n", len(episodeMgr.GetActive()), episodeMgr.GetPinnedID())
-				fmt.Print("user: ")
+				fmt.Print("> ")
 				continue
 			} else if strings.HasPrefix(input, ">>mindstate ") {
 				valStr := strings.TrimSpace(strings.TrimPrefix(input, ">>mindstate "))
@@ -181,7 +218,7 @@ func Run() {
 					mindState = fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", ma, ne, pe, ua)
 					fmt.Printf("debug: mindstate updated to %s.\n", mindState)
 				}
-				fmt.Print("user: ")
+				fmt.Print("> ")
 				continue
 			} else if input == ">>consolidate" {
 				newEpisodes, err := consolidation.Consolidate(historyMgr)
@@ -200,7 +237,7 @@ func Run() {
 					hasUnconsolidated = false
 					fmt.Printf("debug: consolidation completed successfully. %d episode(s) added.\n", len(newEpisodes))
 				}
-				fmt.Print("user: ")
+				fmt.Print("> ")
 				continue
 			} else if input == ">>reflect" {
 				activeEps := episodeMgr.GetActive()
@@ -220,7 +257,7 @@ func Run() {
 					}
 					fmt.Printf("debug: reflection completed. Found %d matching episodes, loaded %d into active memory.\n", len(matchedIDs), loaded)
 				}
-				fmt.Print("user: ")
+				fmt.Print("> ")
 				continue
 			} else if strings.HasPrefix(input, ">>introspect ") {
 				episodeID := strings.TrimSpace(strings.TrimPrefix(input, ">>introspect "))
@@ -229,10 +266,10 @@ func Run() {
 				} else {
 					fmt.Printf("debug: introspection completed for %s. Reflection saved.\n", episodeID)
 				}
-				fmt.Print("user: ")
+				fmt.Print("> ")
 				continue
 			} else if input == "exit" || input == "quit" {
-				fmt.Println("lyra: goodbye!")
+				fmt.Println("\033[32mgoodbye!\033[0m")
 				return
 			}
 
@@ -245,7 +282,7 @@ func Run() {
 			startTime := time.Now()
 			done := make(chan bool)
 			go func() {
-				fmt.Print("lyra: thinking")
+				fmt.Print("\033[32mthinking")
 				ticker := time.NewTicker(500 * time.Millisecond)
 				defer ticker.Stop()
 				for {
@@ -273,18 +310,27 @@ func Run() {
 				time.Sleep(time.Until(startTime.Add(3 * time.Second)))
 				done <- true
 				
+				if debugMode {
+					fmt.Println("\n[DEBUG] Model attention is < 0.20. Randomly skipping this turn (1/3 chance).")
+				}
+				
 				reply := "no response"
-				fmt.Printf("lyra: %s\n", reply)
+				fmt.Printf("\033[32m%s\033[0m\n", reply)
 				_ = historyMgr.Save("assistant", reply, mindState)
 				responderSTM.Update("assistant", reply)
 				reactorSTM.Update("assistant", reply)
-				fmt.Print("user: ")
+				fmt.Print("> ")
 				continue
 			}
 
 			// Invoke reactor agent to determine mindstate after user input
 			if respState, err := reactorAgent.React(ctx, reactorSTM.Get()); err == nil {
 				mindState = fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", respState.ModelAttention, respState.NegativeEmotion, respState.PositiveEmotion, respState.UserAttention)
+				if debugMode {
+					fmt.Printf("\n[DEBUG] Reactor (Pre-Response): Mindstate updated to %s\n", mindState)
+				}
+			} else if debugMode {
+				fmt.Printf("\n[DEBUG] Reactor Error (Pre-Response): %v\n", err)
 			}
 
 			// Build the episode summaries from the active episode pool
@@ -298,8 +344,12 @@ func Run() {
 			reply, usefulEpisodeID, err := resp.Respond(ctx, input, mindState, responderSTM.GetNoFlags(), episodes)
 			if err != nil {
 				done <- true
-				fmt.Printf("lyra: error: failed to generate response: %v\n", err)
+				fmt.Printf("\n\033[31merror: failed to generate response: %v\033[0m\n", err)
 			} else {
+				if debugMode {
+					fmt.Printf("\n[DEBUG] Responder: Output received (Useful Episode ID: %q)\n", usefulEpisodeID)
+				}
+				
 				// If the model identified a useful episode, pin it to prevent eviction
 				if usefulEpisodeID != "" {
 					episodeMgr.MarkUseful(usefulEpisodeID)
@@ -308,6 +358,11 @@ func Run() {
 				// Invoke reactor agent to determine mindstate after assistant response
 				if respState, err := reactorAgent.React(ctx, reactorSTM.Get()); err == nil {
 					mindState = fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", respState.ModelAttention, respState.NegativeEmotion, respState.PositiveEmotion, respState.UserAttention)
+					if debugMode {
+						fmt.Printf("[DEBUG] Reactor (Post-Response): Mindstate updated to %s\n", mindState)
+					}
+				} else if debugMode {
+					fmt.Printf("[DEBUG] Reactor Error (Post-Response): %v\n", err)
 				}
 
 				// Ensure at least 3 seconds have passed
@@ -319,10 +374,10 @@ func Run() {
 				responderSTM.Update("assistant", reply)
 				reactorSTM.Update("assistant", reply)
 
-				fmt.Printf("lyra: %s\n", reply)
+				fmt.Printf("\033[32m%s\033[0m\n", reply)
 			}
 			
-			fmt.Print("user: ")
+			fmt.Print("> ")
 		}
 	}
 }

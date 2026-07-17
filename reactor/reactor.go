@@ -190,14 +190,20 @@ func (r *ReactorAgent) callOpenAI(ctx context.Context, prompt, systemInstruction
 	}
 
 	reqBody := struct {
-		Model    string              `json:"model"`
-		Messages []openAIChatMessage `json:"messages"`
+		Model          string              `json:"model"`
+		Messages       []openAIChatMessage `json:"messages"`
+		ResponseFormat *struct {
+			Type string `json:"type"`
+		} `json:"response_format,omitempty"`
 	}{
 		Model: r.config.Model,
 		Messages: []openAIChatMessage{
 			{Role: "system", Content: systemInstruction},
 			{Role: "user", Content: prompt},
 		},
+		ResponseFormat: &struct {
+			Type string `json:"type"`
+		}{Type: "json_object"},
 	}
 
 	jsonData, err := json.Marshal(reqBody)

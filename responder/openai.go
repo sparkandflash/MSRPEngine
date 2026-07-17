@@ -68,21 +68,23 @@ func (r *OpenAIResponder) respondInternal(ctx context.Context, prompt string, mi
 		},
 	}
 
-	// Wrap user input, mindstate, short-term history, and episodic memory in a JSON object.
-	userPayload := map[string]interface{}{
-		"message":   prompt,
-		"mindstate": mindState,
-		"history":   history,
-		"episodes":  episodes,
+	// Format context and user input as readable text so small models don't get confused by raw JSON
+	var promptBuilder bytes.Buffer
+	promptBuilder.WriteString(fmt.Sprintf("[Current Mindstate: %s]\n", mindState))
+	
+	if len(episodes) > 0 {
+		promptBuilder.WriteString("\n[Recalled Episodic Memories]\n")
+		for _, ep := range episodes {
+			promptBuilder.WriteString(fmt.Sprintf("- Episode %s: %s\n", ep.ID, ep.Summary))
+		}
 	}
-	payloadBytes, err := json.Marshal(userPayload)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to marshal user payload: %w", err)
-	}
+
+	promptBuilder.WriteString("\n[User Message]\n")
+	promptBuilder.WriteString(prompt)
 
 	messages = append(messages, openAIChatMessage{
 		Role:    "user",
-		Content: string(payloadBytes),
+		Content: promptBuilder.String(),
 	})
 
 	reqBody := openAIChatRequest{

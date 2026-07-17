@@ -71,9 +71,13 @@ type HistoryManager struct {
 	messages  []Message
 }
 
-// NewHistoryManager initializes a new persistent history manager with a timestamp-based SessionID.
-func NewHistoryManager() (*HistoryManager, error) {
-	sessionID := time.Now().Format("20060102-150405")
+// NewHistoryManager initializes a persistent history manager for a given SessionID.
+// If the session file already exists, it loads the historical messages into memory.
+func NewHistoryManager(sessionID string) (*HistoryManager, error) {
+	if sessionID == "" {
+		sessionID = time.Now().Format("20060102-150405")
+	}
+
 	dir := filepath.Join("Context", "conversationHistory")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create conversationHistory directory: %w", err)
@@ -81,19 +85,32 @@ func NewHistoryManager() (*HistoryManager, error) {
 
 	filePath := filepath.Join(dir, fmt.Sprintf("%s.json", sessionID))
 
-	// Initialize the file as an empty JSON array
-	if err := os.WriteFile(filePath, []byte("[]"), 0644); err != nil {
-		return nil, fmt.Errorf("failed to initialize history file: %w", err)
+	messages := []Message{}
+	
+	// If the file exists, attempt to load it
+	if _, err := os.Stat(filePath); err == nil {
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read existing history file: %w", err)
+		}
+		if len(data) > 0 {
+			if err := json.Unmarshal(data, &messages); err != nil {
+				return nil, fmt.Errorf("failed to parse existing history file: %w", err)
+			}
+		}
+	} else {
+		// Initialize the file as an empty JSON array
+		if err := os.WriteFile(filePath, []byte("[]"), 0644); err != nil {
+			return nil, fmt.Errorf("failed to initialize history file: %w", err)
+		}
 	}
 
 	return &HistoryManager{
 		SessionID: sessionID,
 		filePath:  filePath,
-		messages:  []Message{},
+		messages:  messages,
 	}, nil
 }
-
-// TODO: Support loading a past conversation by sessionId (SessionID)
 
 // Save appends a new message to the persistent history and writes the full log to disk.
 func (h *HistoryManager) Save(role string, content string, mindState string) error {

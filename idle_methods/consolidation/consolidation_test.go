@@ -28,7 +28,7 @@ func TestCalculateActivationScore(t *testing.T) {
 
 func TestConsolidationFlow(t *testing.T) {
 	// Setup HistoryManager
-	hm, err := consolidator.NewHistoryManager()
+	hm, err := consolidator.NewHistoryManager("")
 	if err != nil {
 		t.Fatalf("failed to create HistoryManager: %v", err)
 	}
