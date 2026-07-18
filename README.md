@@ -37,3 +37,9 @@ The engine is entirely self-contained. You can compile a specific Persona into a
 ## Getting Started
 
 To dive into the technical details, configure the API keys, and build your own standalone Persona binaries, head over to the [Terminal App Documentation](terminal-app/README.md).
+
+## Roadmap
+Now that the core MSRPEngine is cleanly decoupled and isolated in its own terminal-app architecture, future development will expand into new interfaces:
+*   **Discord Bot Integration:** Exposing the engine as an active participant in Discord servers.
+*   **Browser-Based Web App:** A rich HTML/CSS/JS interface running locally or deployed to the web.
+*   **Server SSH Integration:** Allowing users to SSH directly into a deployed engine instance on a cloud provider like GCP to interact with the bot.
