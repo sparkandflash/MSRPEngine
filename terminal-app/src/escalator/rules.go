@@ -112,7 +112,7 @@ func (e *RuleEngine) EvaluateState(mindState string, hasUnconsolidatedMessages b
 
 	// 1. Consolidation (Timer driven, default 1 minute)
 	freqMins := 1
-	if val := os.Getenv("LYRA_CONSOLIDATION_FREQ_MINS"); val != "" {
+	if val := os.Getenv("SYSTEM_CONSOLIDATION_FREQ_MINS"); val != "" {
 		if m, err := strconv.Atoi(val); err == nil && m > 0 {
 			freqMins = m
 		}
@@ -153,7 +153,7 @@ func (e *RuleEngine) EvaluateState(mindState string, hasUnconsolidatedMessages b
 
 		// Throttled Introspection/Reflection
 		tempSleepCycleMins := 60
-		if val := os.Getenv("LYRA_TEMP_SLEEP_CYCLE_MINS"); val != "" {
+		if val := os.Getenv("SYSTEM_TEMP_SLEEP_CYCLE_MINS"); val != "" {
 			if m, err := strconv.Atoi(val); err == nil && m > 0 {
 				tempSleepCycleMins = m
 			}

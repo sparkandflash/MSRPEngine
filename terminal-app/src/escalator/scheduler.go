@@ -27,10 +27,10 @@ func NewScheduler(getMindState func() string, hasUnconsolidated func() bool) *Sc
 	}
 }
 
-// Run starts the background ticker. Duration is read from LYRA_TICK_SECONDS (default 5).
+// Run starts the background ticker. Duration is read from SYSTEM_TICK_SECONDS (default 5).
 func (s *Scheduler) Run(ctx context.Context) {
 	tickSecs := 5
-	if v := os.Getenv("LYRA_TICK_SECONDS"); v != "" {
+	if v := os.Getenv("SYSTEM_TICK_SECONDS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			tickSecs = n
 		}

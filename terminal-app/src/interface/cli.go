@@ -84,9 +84,9 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 	unreactedChars := 0
 
 	// ── Reactor STM ──────────────────────────────────────────────────────────
-	// LYRA_MAX_WORKING_MEMORY_CHARS controls the reactor's short-term memory window (default 2000).
+	// SYSTEM_MAX_WORKING_MEMORY_CHARS controls the reactor's short-term memory window (default 2000).
 	reactorMaxChars := 2000
-	if limitStr := os.Getenv("LYRA_MAX_WORKING_MEMORY_CHARS"); limitStr != "" {
+	if limitStr := os.Getenv("SYSTEM_MAX_WORKING_MEMORY_CHARS"); limitStr != "" {
 		var limit int
 		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err == nil && limit > 0 {
 			reactorMaxChars = limit
@@ -95,9 +95,9 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 	reactorSTM := consolidator.NewSTMmanager(reactorMaxChars)
 
 	// ── Responder STM ────────────────────────────────────────────────────────
-	// LYRA_RESPONDER_STM_CHARS controls the responder's short-term memory window (default 2000).
+	// SYSTEM_RESPONDER_STM_CHARS controls the responder's short-term memory window (default 2000).
 	responderMaxChars := 2000
-	if limitStr := os.Getenv("LYRA_RESPONDER_STM_CHARS"); limitStr != "" {
+	if limitStr := os.Getenv("SYSTEM_RESPONDER_STM_CHARS"); limitStr != "" {
 		var limit int
 		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err == nil && limit > 0 {
 			responderMaxChars = limit
@@ -106,7 +106,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 	responderSTM := consolidator.NewSTMmanager(responderMaxChars)
 
 	// ── Episode Memory Manager ────────────────────────────────────────────────
-	// LYRA_EPISODE_MEMORY_CHARS controls the runtime episode pool's character budget (default 2000).
+	// SYSTEM_EPISODE_MEMORY_CHARS controls the runtime episode pool's character budget (default 2000).
 	episodeMgr := episode_memory.LoadEpisodeMemoryManagerFromEnv()
 
 	// ── Session Resolution ───────────────────────────────────────────────────
@@ -311,7 +311,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 					}
 					
 					_ = historyMgr.Save("assistant", reply, mindState)
-					personalityName := os.Getenv("LYRA_PERSONALITY_NAME")
+					personalityName := os.Getenv("SYSTEM_PERSONALITY_NAME")
 					if personalityName == "" {
 						personalityName = "lyra" // default fallback
 					}

@@ -20,7 +20,7 @@ var rawPersonalityPrompt string
 var rawConsolidationPrompt string
 
 func injectPersonalityName(prompt string) string {
-	name := os.Getenv("LYRA_PERSONALITY_NAME")
+	name := os.Getenv("SYSTEM_PERSONALITY_NAME")
 	if name == "" {
 		name = "Lyra"
 	}

@@ -50,8 +50,8 @@ func TestConsolidationFlow(t *testing.T) {
 	}
 
 	// Trigger consolidation (which will call the mock summariser under the hood since s.config.Type is empty or mock)
-	os.Setenv("LYRA_MAX_WORKING_MEMORY_CHARS", "100")
-	defer os.Unsetenv("LYRA_MAX_WORKING_MEMORY_CHARS")
+	os.Setenv("SYSTEM_MAX_WORKING_MEMORY_CHARS", "100")
+	defer os.Unsetenv("SYSTEM_MAX_WORKING_MEMORY_CHARS")
 
 	newEpisodes, err := Consolidate(hm)
 	if err != nil {

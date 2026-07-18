@@ -53,8 +53,8 @@ func TestNewResponderFromEnv(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Set env
-			os.Setenv("LYRA_RESPONDER_TYPE", tc.envType)
-			defer os.Unsetenv("LYRA_RESPONDER_TYPE")
+			os.Setenv("SYSTEM_RESPONDER_TYPE", tc.envType)
+			defer os.Unsetenv("SYSTEM_RESPONDER_TYPE")
 
 			resp, err := NewResponderFromEnv()
 			if tc.expectInitErr {

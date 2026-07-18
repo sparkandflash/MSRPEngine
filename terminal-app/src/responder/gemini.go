@@ -67,7 +67,7 @@ func (r *GeminiResponder) RespondProactive(ctx context.Context, mindState string
 
 func (r *GeminiResponder) respondInternal(ctx context.Context, prompt string, mindState string, history []consolidator.Message, episodes []EpisodeSummary, systemPrompt string) (string, string, error) {
 	if r.config.APIKey == "" {
-		return "", "", fmt.Errorf("Gemini API key is required but missing from environment variables (set LYRA_API_KEY)")
+		return "", "", fmt.Errorf("Gemini API key is required but missing from environment variables (set SYSTEM_API_KEY)")
 	}
 
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",

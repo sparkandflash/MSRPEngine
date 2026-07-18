@@ -65,7 +65,7 @@ func Consolidate(hm *consolidator.HistoryManager) ([]EpisodeSummary, error) {
 
 	// Determine character limit for consolidation chunking
 	maxChars := 3000
-	if limitStr := os.Getenv("LYRA_CONSOLIDATION_DENSITY"); limitStr != "" {
+	if limitStr := os.Getenv("SYSTEM_CONSOLIDATION_DENSITY"); limitStr != "" {
 		var limit int
 		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err == nil && limit > 0 {
 			maxChars = limit

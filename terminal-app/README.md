@@ -8,42 +8,26 @@ Lyra now features a **dual-memory system** (Short-Term Memory + Episodic Long-Te
 
 ## Getting Started
 
-### 1. Configuration
-The engine reads API keys and settings from a `.env` file. We use `joho/godotenv` to dynamically load the `.env` file from the exact directory where the binary is executed.
+### 1. How to Run a Sample Binary (Quickstart)
+We provide pre-compiled bots in the `samples/` folder for demonstration purposes. These are ready to run instantly!
 
-To create a new Persona:
-1. Create a folder in `samples/` (e.g., `samples/my_bot/`).
-2. Copy `.env.example` into `samples/my_bot/.env` and add your API keys.
-3. Set `LYRA_PERSONALITY_NAME="my_bot"` in the `.env` file.
-4. Create a `samples/my_bot/personality.txt` file containing the core prompt/identity for the bot.
+1. Navigate to one of the sample folders (e.g., `cd terminal-app/samples/lyra`).
+2. Open the `.env` file and configure your API keys (e.g. `SYSTEM_RESPONDER_API_KEY`).
+3. Run the binary! (e.g., double click `lyra` or run `./lyra` in the terminal).
 
-### 2. Building Standalone Binaries
-We provide a helper script to permanently bake your `personality.txt` into the engine and compile a standalone, portable application.
+*Because the binary automatically resolves its own path, it will instantly find the `.env` file next to it, and it will spawn its own isolated `Context/` folder for memory storage exactly where it was launched!*
 
-```bash
-cd terminal-app
-./build.sh <sample_name>
-```
+### 2. How to Build Your Own Binary
+If you want to create a brand new bot with a custom personality, you compile it from the source code.
 
-**Example:**
-```bash
-./build.sh lyra
-```
-
-This will:
-1. Inject the `lyra` personality into the engine's source code.
-2. Compile the engine into `build/lyra/lyra`.
-3. Copy your `.env` configuration into `build/lyra/`.
-
-### 3. Running Your Persona
-Navigate to the `build/` directory and execute the binary directly.
-
-```bash
-cd build/lyra
-./lyra
-```
-
-Because the binary automatically resolves its own path, it will instantly find the `.env` file next to it, and it will spawn its own isolated `Context/` folder for memory storage exactly where it was launched!
+1. Open `terminal-app/src/prompts/personality.txt` and write the core prompt/identity for your new bot.
+2. Open a terminal and run the build script, providing the name of the binary you want to create:
+   ```bash
+   cd terminal-app
+   ./build.sh my_custom_bot
+   ```
+3. Your compiled binary will be waiting for you in the `build/` folder!
+4. You can now package this binary with an `.env` file and share it with others.
 
 ## Commands
 While chatting with Lyra, you can use these special commands:
@@ -121,8 +105,8 @@ Lyra automatically loads environment variables from a local `.env` file at start
 ### Layered Agent Configurations
 Lyra uses a **hierarchical configuration system** to manage its three primary agents (Responder, Reactor, and Summariser). 
 
-1. **Agent-Specific Variables**: Each agent can be configured with its own dedicated endpoint, model, and API key. For example, `LYRA_REACTOR_API_KEY` and `LYRA_SUMMARISER_MODEL`.
-2. **Base Fallbacks**: If an agent-specific variable is missing, Lyra gracefully falls back to the global base variable (e.g., `LYRA_API_KEY`, `LYRA_BASE_URL`, `LYRA_MODEL`).
+1. **Agent-Specific Variables**: Each agent can be configured with its own dedicated endpoint, model, and API key. For example, `SYSTEM_REACTOR_API_KEY` and `SYSTEM_SUMMARISER_MODEL`.
+2. **Base Fallbacks**: If an agent-specific variable is missing, Lyra gracefully falls back to the global base variable (e.g., `SYSTEM_API_KEY`, `SYSTEM_BASE_URL`, `SYSTEM_MODEL`).
 
 This allows you to run the heavy conversation agent on a high-tier model (e.g., GPT-4o) while offloading the background Reactor and Summariser tasks to cheaper, faster models (e.g., Gemma on Cerebras) using entirely different API keys.
 
@@ -132,9 +116,9 @@ When Lyra starts up, she performs a pre-flight credential check. The system ping
 *   If any agent's credentials or connection fails, the bot will immediately abort with a fatal error rather than crashing silently mid-conversation.
 
 ### Memory Variables
-* **Responder:** `LYRA_RESPONDER_STM_CHARS` (default 4000)
-* **Reactor:** `LYRA_MAX_WORKING_MEMORY_CHARS` (default 3000) - limits the context window sent to the mindstate analysis.
-* **Episode Memory:** `LYRA_EPISODE_MEMORY_CHARS` (default 8000) - total character budget for active loaded episodes.
+* **Responder:** `SYSTEM_RESPONDER_STM_CHARS` (default 4000)
+* **Reactor:** `SYSTEM_MAX_WORKING_MEMORY_CHARS` (default 3000) - limits the context window sent to the mindstate analysis.
+* **Episode Memory:** `SYSTEM_EPISODE_MEMORY_CHARS` (default 8000) - total character budget for active loaded episodes.
 
 ---
 

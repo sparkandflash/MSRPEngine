@@ -75,30 +75,30 @@ func loadAgentConfig(prefix string, defaultPrompt string) Config {
 	loadEnvFile()
 
 	getType := func() string {
-		if val := os.Getenv("LYRA_" + prefix + "_TYPE"); val != "" {
+		if val := os.Getenv("SYSTEM_" + prefix + "_TYPE"); val != "" {
 			return val
 		}
-		return os.Getenv("LYRA_RESPONDER_TYPE") // Base fallback for type (legacy support)
+		return os.Getenv("SYSTEM_RESPONDER_TYPE") // Base fallback for type (legacy support)
 	}
 
 	getVar := func(name string, fallback string) string {
-		if val := os.Getenv("LYRA_" + prefix + "_" + name); val != "" {
+		if val := os.Getenv("SYSTEM_" + prefix + "_" + name); val != "" {
 			return val
 		}
 		return os.Getenv(fallback)
 	}
 
-	sysInst := getVar("SYSTEM_INSTRUCTION", "LYRA_SYSTEM_INSTRUCTION")
+	sysInst := getVar("SYSTEM_INSTRUCTION", "SYSTEM_SYSTEM_INSTRUCTION")
 	if sysInst == "" {
 		sysInst = defaultPrompt
 	}
 
 	return Config{
 		Type:              strings.ToLower(strings.TrimSpace(getType())),
-		APIKey:            getVar("API_KEY", "LYRA_API_KEY"),
-		BaseURL:           getVar("BASE_URL", "LYRA_BASE_URL"),
-		Model:             getVar("MODEL", "LYRA_MODEL"),
-		LocalBinaryPath:   getVar("LOCAL_BINARY_PATH", "LYRA_LOCAL_BINARY_PATH"),
+		APIKey:            getVar("API_KEY", "SYSTEM_API_KEY"),
+		BaseURL:           getVar("BASE_URL", "SYSTEM_BASE_URL"),
+		Model:             getVar("MODEL", "SYSTEM_MODEL"),
+		LocalBinaryPath:   getVar("LOCAL_BINARY_PATH", "SYSTEM_LOCAL_BINARY_PATH"),
 		SystemInstruction: sysInst,
 	}
 }
@@ -112,7 +112,7 @@ func LoadConfigFromEnv() Config {
 func LoadReactorConfigFromEnv() Config {
 	cfg := loadAgentConfig("REACTOR", prompts.GetReactorPrompt())
 	
-	thresholdStr := os.Getenv("LYRA_REACTOR_CHAR_THRESHOLD")
+	thresholdStr := os.Getenv("SYSTEM_REACTOR_CHAR_THRESHOLD")
 	if thresholdStr == "" {
 		cfg.ReactorCharThreshold = 600
 	} else {

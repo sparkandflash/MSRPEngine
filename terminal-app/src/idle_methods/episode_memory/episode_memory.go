@@ -45,11 +45,11 @@ func NewEpisodeMemoryManager(maxChars int) *EpisodeMemoryManager {
 	}
 }
 
-// LoadEpisodeMemoryManagerFromEnv reads LYRA_EPISODE_MEMORY_CHARS (default 2000)
+// LoadEpisodeMemoryManagerFromEnv reads SYSTEM_EPISODE_MEMORY_CHARS (default 2000)
 // and returns a configured EpisodeMemoryManager.
 func LoadEpisodeMemoryManagerFromEnv() *EpisodeMemoryManager {
 	maxChars := 2000
-	if limitStr := os.Getenv("LYRA_EPISODE_MEMORY_CHARS"); limitStr != "" {
+	if limitStr := os.Getenv("SYSTEM_EPISODE_MEMORY_CHARS"); limitStr != "" {
 		var limit int
 		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err == nil && limit > 0 {
 			maxChars = limit
