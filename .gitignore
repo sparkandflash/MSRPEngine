@@ -1,3 +1,8 @@
+# Environment Variables
 .env
-lyra
-Context
+
+# Context Memory Directories (all locations)
+Context/
+
+# Build Directory (Standalone Binaries and their Contexts)
+terminal-app/build/
