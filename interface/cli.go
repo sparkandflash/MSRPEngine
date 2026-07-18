@@ -203,7 +203,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 					}
 					
 					for _, line := range strings.Split(reply, "\n") {
-						if line != "" {
+						if strings.TrimSpace(line) != "" {
 							fmt.Fprintf(rl.Stdout(), "\033[34m> %s\033[0m\n", line)
 						}
 					}
@@ -294,6 +294,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				continue
 			} else if input == "exit" || input == "quit" {
 				os.WriteFile(lastSessionPath, []byte(fmt.Sprintf("%s\n%s", historyMgr.SessionID, mindState)), 0644)
+				rl.Close()
 				fmt.Println("\033[34m> goodbye!\033[0m")
 				return
 			}
@@ -400,7 +401,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				reactorSTM.Update("assistant", reply)
 
 				for _, line := range strings.Split(reply, "\n") {
-					if line != "" {
+					if strings.TrimSpace(line) != "" {
 						fmt.Fprintf(rl.Stdout(), "\033[34m> %s\033[0m\n", line)
 					}
 				}
