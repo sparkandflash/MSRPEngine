@@ -1,8 +1,8 @@
-# Lyra
+# MSRPEngine
 
-Lyra is a terminal-based interactive chatbot built in Go. It features a provider-agnostic responder agent harness, allowing you to connect it to local model runners, cloud-based LLM APIs, or even package models directly inside the executable.
+MSRPEngine (Mind-State Roleplay Engine) is a terminal-based interactive chatbot framework built in Go. It features a provider-agnostic responder agent harness, allowing you to connect it to local model runners, cloud-based LLM APIs, or even package models directly inside the executable.
 
-Lyra now features a **dual-memory system** (Short-Term Memory + Episodic Long-Term Memory), a **Reactor Agent** for evaluating emotional state, and a **Summariser Agent** for consolidating memories.
+MSRPEngine features a **dual-memory system** (Short-Term Memory + Episodic Long-Term Memory), a **Reactor Agent** for evaluating emotional state, and a **Summariser Agent** for consolidating memories.
 
 ---
 
@@ -30,7 +30,7 @@ If you want to create a brand new bot with a custom personality, you compile it 
 4. You can now package this binary with an `.env` file and share it with others.
 
 ## Commands
-While chatting with Lyra, you can use these special commands:
+While chatting with your Persona, you can use these special commands:
 *   `>>debug`: Bypasses the LLM and prints system status (e.g., current mindstate and active episodes).
 *   `>>mindstate <ma>:<ne>:<pe>:<ua>`: Manually override the current mindstate.
 *   `>>consolidate`: Triggers the Summariser agent to chunk unsaved history into episodic memories.
@@ -100,18 +100,18 @@ flowchart TD
 
 ## Configuration (`.env`)
 
-Lyra automatically loads environment variables from a local `.env` file at startup. An extensive template is provided in [`.env.example`](.env.example). 
+The engine automatically loads environment variables from a local `.env` file at startup. An extensive template is provided in [`.env.example`](.env.example). 
 
 ### Layered Agent Configurations
-Lyra uses a **hierarchical configuration system** to manage its three primary agents (Responder, Reactor, and Summariser). 
+The engine uses a **hierarchical configuration system** to manage its three primary agents (Responder, Reactor, and Summariser). 
 
 1. **Agent-Specific Variables**: Each agent can be configured with its own dedicated endpoint, model, and API key. For example, `SYSTEM_REACTOR_API_KEY` and `SYSTEM_SUMMARISER_MODEL`.
-2. **Base Fallbacks**: If an agent-specific variable is missing, Lyra gracefully falls back to the global base variable (e.g., `SYSTEM_API_KEY`, `SYSTEM_BASE_URL`, `SYSTEM_MODEL`).
+2. **Base Fallbacks**: If an agent-specific variable is missing, the engine gracefully falls back to the global base variable (e.g., `SYSTEM_API_KEY`, `SYSTEM_BASE_URL`, `SYSTEM_MODEL`).
 
 This allows you to run the heavy conversation agent on a high-tier model (e.g., GPT-4o) while offloading the background Reactor and Summariser tasks to cheaper, faster models (e.g., Gemma on Cerebras) using entirely different API keys.
 
 ### Pre-Flight Validation
-When Lyra starts up, she performs a pre-flight credential check. The system pings the `/models` endpoint of each configured provider for the Responder, Reactor, and Summariser. 
+When the engine starts up, it performs a pre-flight credential check. The system pings the `/models` endpoint of each configured provider for the Responder, Reactor, and Summariser. 
 *   **Validation is free and instantaneous** (it does not consume token generation credits).
 *   If any agent's credentials or connection fails, the bot will immediately abort with a fatal error rather than crashing silently mid-conversation.
 
@@ -124,7 +124,7 @@ When Lyra starts up, she performs a pre-flight credential check. The system ping
 
 ## Memory & Conversation Logging
 
-Lyra handles conversation history via three distinct mechanisms:
+The engine handles conversation history via three distinct mechanisms:
 
 ### 1. Short-Term Memory (STM)
 A rolling history is sent inside the JSON payload to the model API under the `"history"` key. This memory is automatically pruned (FIFO) based on character limits. The **Responder** and **Reactor** now maintain decoupled STM tracking to preserve context independently.
@@ -143,12 +143,12 @@ Every single message (user inputs, assistant replies, mindstate scores) is saved
 
 ## Reactor Agent (Mindstate Analysis)
 
-Lyra features a **Reactor Agent** packaged in `reactor/` that monitors conversation flow in the background:
-*   **Triggers:** Automatically executes after every short-term memory update (after the user texts, and after Lyra responds).
+The framework features a **Reactor Agent** packaged in `reactor/` that monitors conversation flow in the background:
+*   **Triggers:** Automatically executes after every short-term memory update (after the user texts, and after the Persona responds).
 *   **Function:** Evaluates the conversation to generate a `mindstate` score:
     `[Model Attention] : [Negative Emotion] : [Positive Emotion] : [User Attention]`
-*   **Impact:** Updates the active mindstate in real-time, allowing Lyra to adjust tone, detail length, and emotional matching dynamically in her response.
-*   **Low-Attention Skipping:** If the Model Attention drops below `0.20`, Lyra has a 33% chance to skip generating a response, simulating natural conversational disengagement.
+*   **Impact:** Updates the active mindstate in real-time, allowing the Persona to adjust tone, detail length, and emotional matching dynamically in its response.
+*   **Low-Attention Skipping:** If the Model Attention drops below `0.20`, the Persona has a 33% chance to skip generating a response, simulating natural conversational disengagement.
 
 ---
 
@@ -156,7 +156,7 @@ Lyra features a **Reactor Agent** packaged in `reactor/` that monitors conversat
 
 The **Reflector Module** (located in `idle_methods/reflector/`) handles dynamic context retrieval and introspective self-analysis:
 *   **Reflect (`>>reflect`):** Scans the `index.csv` for past episodes where the Attention Score (Model Attention + User Attention) was *higher* than the current conversation's attention. If it shares keywords with currently active episodes, it is pushed into the `EpisodeMemoryManager` to provide deep contextual anchoring.
-*   **Introspect (`>>introspect <id>`):** Invokes the Summariser Agent using a specialized `introspection.txt` prompt. It analyzes a past conversation episode to evaluate how Lyra could have responded differently, saving the resulting alternative strategies to `Context/episodes/reflections/` for long-term behavioral adjustment.
+*   **Introspect (`>>introspect <id>`):** Invokes the Summariser Agent using a specialized `introspection.txt` prompt. It analyzes a past conversation episode to evaluate how the Persona could have responded differently, saving the resulting alternative strategies to `Context/episodes/reflections/` for long-term behavioral adjustment.
 
 ---
 
@@ -194,18 +194,18 @@ Packages a GGUF model directly inside the executable using Go's `//go:embed` dir
 
 ## Escalator Module (Autonomy & Proactive Messaging)
 
-The **Escalator Module** turns Lyra into a proactive participant. Driven by an offline, deterministic Rule Engine and a background Scheduler:
+The **Escalator Module** turns the Persona into a proactive participant. Driven by an offline, deterministic Rule Engine and a background Scheduler:
 
 *   **Heartrate & Decay:** The engine maintains a runtime `Heartrate` (BPM) that naturally decays toward resting levels over time, but spikes dynamically during intense emotional conversations.
 *   **Background Scheduler:** A concurrent 5-second ticker evaluates the conversation state against the Rule Engine and emits background events.
-*   **Proactive Messaging:** If the user is silent for an extended period while Lyra's attention and heartrate are elevated, the engine triggers a `PROACTIVE_MESSAGE` event. Lyra temporarily locks the user's terminal input and gracefully initiates conversation using a dedicated prompt designed for proactive engagement.
+*   **Proactive Messaging:** If the user is silent for an extended period while the engine's attention and heartrate are elevated, it triggers a `PROACTIVE_MESSAGE` event. The engine temporarily locks the user's terminal input and gracefully initiates conversation using a dedicated prompt designed for proactive engagement.
 *   **Offline Event Scheduling:** The Escalator also assumes responsibility for automatically triggering the Reflector and Summariser (`CONSOLIDATE`, `REFLECT`, `INTROSPECT`) entirely in the background when pacing allows.
 
 ---
 
 ## Roadmap
 
-The core architecture for Lyra is complete! Future improvements will focus on:
+The core architecture for MSRPEngine is complete! Future improvements will focus on:
 
 *   **Multi-Modal Integrations:** Expanding input to support voice or vision.
 *   **Refined Decay Algorithms:** Tuning the Rule Engine metrics and scaling up model complexity.
