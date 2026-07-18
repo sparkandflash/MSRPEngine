@@ -1,6 +1,6 @@
-# Mind-State Roleplay Engine
+# MSRPEngine
 
-Welcome to the **Mind-State Roleplay Engine**—an experimental project designed to decouple the concept of an AI's "Subconscious System" from its "Personality". 
+Welcome to **MSRPEngine** (Mind-State Roleplay Engine)—an experimental project designed to decouple the concept of an AI's "Subconscious System" from its "Personality". 
 
 This architecture allows developers to create deeply stateful, emotionally intelligent companions. The underlying engine runs continuously in the background, managing complex memory structures, evaluating emotional context, and initiating proactive actions, while the specific "Persona" is seamlessly loaded on top as the conversational interface.
 
@@ -31,12 +31,12 @@ The engine simulates fatigue and arousal:
 *   **Heartrate:** Spikes during intense emotional exchanges, causing the System to process information faster.
 *   **Mental Energy:** Slowly depletes while the Persona is active. If energy drops to zero, the engine forces the Persona to give terse, exhausted responses until the user allows it to "sleep" and recharge.
 
-### 4. Portable Standalone Binaries
-The engine is entirely self-contained. You can compile a specific Persona into a portable standalone binary. Once compiled, you can run the executable anywhere on your computer—it automatically spins up its own isolated context folders and configuration right next to itself.
+### 4. Portable Directories
+The engine is self-contained within a portable directory containing the executable and its `.bin/` sidecar ML engine. You can compile a specific Persona and run it anywhere on your computer—it automatically spins up its own isolated context folders and configuration right next to itself.
 
 ## Getting Started
 
-To dive into the technical details, configure the API keys, and build your own standalone Persona binaries, head over to the [Terminal App Documentation](terminal-app/README.md).
+To dive into the technical details, configure the API keys, and build your own portable Persona bots, head over to the [Terminal App Documentation](terminal-app/README.md).
 
 ## Roadmap
 Now that the core MSRPEngine is cleanly decoupled and isolated in its own terminal-app architecture, future development will expand into new interfaces:

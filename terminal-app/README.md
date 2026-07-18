@@ -27,7 +27,7 @@ If you want to create a brand new bot with a custom personality, you compile it 
    ./build.sh my_custom_bot
    ```
 3. Your compiled binary will be waiting for you in the `build/` folder!
-4. You can now package this binary with an `.env` file and share it with others.
+4. You can now package this binary with its `.bin/` sidecar folder and an `.env` file to share it with others.
 
 ## Commands
 While chatting with your Persona, you can use these special commands:
@@ -155,7 +155,7 @@ The framework features a **Reactor Agent** packaged in `reactor/` that monitors 
 ## Reflector Module (Self-Analysis & Context)
 
 The **Reflector Module** (located in `idle_methods/reflector/`) handles dynamic context retrieval and introspective self-analysis using **offline semantic vector embeddings**:
-*   **Reflect (`>>reflect`):** Scans `index.jsonl` for past episodes where the Attention Score (Model Attention + User Attention) was *higher* than the current conversation's attention. It then performs a local Cosine Similarity search using its background `ollama` sidecar engine to find the most semantically relevant memories, pushing them into active context.
+*   **Reflect (`>>reflect`):** Scans `index.jsonl` for past episodes where the Attention Score (Model Attention + User Attention) was *higher* than the current conversation's attention. It then performs a local Cosine Similarity search using its background `ollama` sidecar engine (a subprocess it manages: spawned on start, killed on exit) to find the most semantically relevant memories, pushing them into active context.
 *   **Introspect (`>>introspect <id>`):** Invokes the Summariser Agent using a specialized `introspection.txt` prompt. It analyzes a past conversation episode to evaluate how the Persona could have responded differently, saving the resulting alternative strategies to `Context/episodes/reflections/` for long-term behavioral adjustment.
 
 ---
@@ -181,14 +181,14 @@ Packages a GGUF model directly inside the executable using Go's `//go:embed` dir
 ---
 
 ## Project Structure
-*   [main.go](file:///Users/pratheeksha/lyra/main.go): The application entry point.
-*   [interface/](file:///Users/pratheeksha/lyra/interface): Houses the interactive CLI/terminal chat loop.
-*   [responder/](file:///Users/pratheeksha/lyra/responder): Contains the provider-agnostic responder harness.
-*   [reactor/](file:///Users/pratheeksha/lyra/reactor): The background mindstate evaluator.
-*   [summariser/](file:///Users/pratheeksha/lyra/summariser): The background agent handling memory consolidation.
-*   [idle_methods/](file:///Users/pratheeksha/lyra/idle_methods): Features invoked explicitly or on idle (consolidation, episodic memory, reflection).
-*   [consolidator/](file:///Users/pratheeksha/lyra/consolidator): Core history and STM state manager.
-*   [escalator/](file:///Users/pratheeksha/lyra/escalator): The event-driven rule engine and background scheduler handling proactive autonomy.
+*   [`main.go`](./main.go): The application entry point.
+*   [`interface/`](./src/interface): Houses the interactive CLI/terminal chat loop.
+*   [`responder/`](./src/responder): Contains the provider-agnostic responder harness.
+*   [`reactor/`](./src/reactor): The background mindstate evaluator.
+*   [`summariser/`](./src/summariser): The background agent handling memory consolidation.
+*   [`idle_methods/`](./src/idle_methods): Features invoked explicitly or on idle (consolidation, episodic memory, reflection).
+*   [`consolidator/`](./src/consolidator): Core history and STM state manager.
+*   [`escalator/`](./src/escalator): The event-driven rule engine and background scheduler handling proactive autonomy.
 
 ---
 
