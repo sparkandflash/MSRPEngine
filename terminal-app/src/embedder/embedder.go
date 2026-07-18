@@ -7,33 +7,53 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 )
 
-// Embedder handles vector embeddings via the local Ollama sidecar.
+// Embedder configures the connection to the embedding engine.
 type Embedder struct {
-	BaseURL string
-	Model   string
+	EndpointURL string
+	Model       string
+	APIKey      string
 }
 
-// NewLocalEmbedder creates an embedder pointing to the local sidecar Ollama.
+// NewLocalEmbedder creates an embedder pointing to the configured instance.
 func NewLocalEmbedder() *Embedder {
+	endpoint := os.Getenv("EMBEDDING_API_URL")
+	if endpoint == "" {
+		endpoint = "http://127.0.0.1:11435/api/embed"
+	}
+	model := os.Getenv("EMBEDDING_MODEL")
+	if model == "" {
+		model = "nomic-embed-text"
+	}
+	apiKey := os.Getenv("EMBEDDING_API_KEY")
 	return &Embedder{
-		BaseURL: "http://127.0.0.1:11435",
-		Model:   "nomic-embed-text",
+		EndpointURL: endpoint,
+		Model:       model,
+		APIKey:      apiKey,
 	}
 }
 
 // Embed generates a vector embedding for the given text.
 func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	url := fmt.Sprintf("%s/api/embed", e.BaseURL)
+	url := e.EndpointURL
 	
-	reqBody := struct {
-		Model string `json:"model"`
-		Input string `json:"input"`
-	}{
-		Model: e.Model,
-		Input: text,
+	var reqBody interface{}
+	// Simple heuristic: if URL contains cohere, use Cohere's payload format
+	if strings.Contains(url, "cohere.com") {
+		reqBody = map[string]interface{}{
+			"model": e.Model,
+			"texts": []string{text},
+			"input_type": "search_document",
+		}
+	} else {
+		reqBody = map[string]interface{}{
+			"model": e.Model,
+			"input": text,
+		}
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -46,6 +66,9 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if e.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer " + e.APIKey)
+	}
 
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)

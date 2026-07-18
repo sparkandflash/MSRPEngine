@@ -25,6 +25,7 @@ import (
 	"terminal-app/src/interface/api"
 	"terminal-app/src/reactor"
 	"terminal-app/src/responder"
+	"io"
 )
 
 func updateSessionCSV(sessionID, mindState string, mentalEnergy float64) {
@@ -72,37 +73,39 @@ func updateSessionCSV(sessionID, mindState string, mentalEnergy float64) {
 }
 
 // Run starts the interactive chat interface for Lyra.
-func Run(newSession bool, reuseSession string, debugMode bool) {
+func Run(newSession bool, reuseSession string, debugMode bool, noInterface bool) {
 	personalityName := os.Getenv("SYSTEM_PERSONALITY_NAME")
 	if personalityName == "" {
 		personalityName = "lyra" // default fallback
 	}
 
-	// Check for local embedding engine sidecar
-	binDir := utils.ResolvePath(".bin")
-	ollamaPath := filepath.Join(binDir, "ollama")
-	if _, err := os.Stat(ollamaPath); os.IsNotExist(err) {
-		fmt.Println("system error: ollama bin and embedding model files are missing.")
-		os.Exit(1)
-	}
-
-	// Start Ollama sidecar
-	modelsDir := filepath.Join(binDir, "models")
-	ollamaCmd := exec.Command(ollamaPath, "serve")
-	ollamaCmd.Env = append(os.Environ(), 
-		fmt.Sprintf("OLLAMA_MODELS=%s", modelsDir),
-		"OLLAMA_HOST=127.0.0.1:11435",
-	)
-	
-	if err := ollamaCmd.Start(); err != nil {
-		fmt.Printf("system error: failed to start local embedding engine: %v\n", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if ollamaCmd.Process != nil {
-			ollamaCmd.Process.Kill()
+	// Start Ollama sidecar only if no remote URL is provided
+	var ollamaCmd *exec.Cmd
+	if os.Getenv("EMBEDDING_API_URL") == "" {
+		binDir := utils.ResolvePath(".bin")
+		ollamaPath := filepath.Join(binDir, "ollama")
+		if _, err := os.Stat(ollamaPath); os.IsNotExist(err) {
+			fmt.Println("system error: ollama bin and embedding model files are missing.")
+			os.Exit(1)
 		}
-	}()
+
+		modelsDir := filepath.Join(binDir, "models")
+		ollamaCmd = exec.Command(ollamaPath, "serve")
+		ollamaCmd.Env = append(os.Environ(), 
+			fmt.Sprintf("OLLAMA_MODELS=%s", modelsDir),
+			"OLLAMA_HOST=127.0.0.1:11435",
+		)
+		
+		if err := ollamaCmd.Start(); err != nil {
+			fmt.Printf("system error: failed to start local embedding engine: %v\n", err)
+			os.Exit(1)
+		}
+		defer func() {
+			if ollamaCmd != nil && ollamaCmd.Process != nil {
+				ollamaCmd.Process.Kill()
+			}
+		}()
+	}
 
 	// Initialize the responder agent from environment configuration
 	resp, err := responder.NewResponderFromEnv()
@@ -231,32 +234,40 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 	go sched.Run(context.Background())
 
 	// Initialize Readline
-	rl, err := readline.NewEx(&readline.Config{
-		Prompt:      "> ",
-		HistoryFile: historyDir + "/readline_history.txt",
-	})
-	if err != nil {
-		fmt.Printf("system error: failed to initialize readline: %v\n", err)
-		os.Exit(1)
+	var outWriter io.Writer = os.Stdout
+	var rl *readline.Instance
+	if !noInterface {
+		var err error
+		rl, err = readline.NewEx(&readline.Config{
+			Prompt:      "> ",
+			HistoryFile: historyDir + "/readline_history.txt",
+		})
+		if err != nil {
+			fmt.Printf("system error: failed to initialize readline: %v\n", err)
+			os.Exit(1)
+		}
+		defer rl.Close()
+		outWriter = outWriter
 	}
-	defer rl.Close()
 
 	// Background input queue manager
 	inputChan := make(chan string)
-	go func() {
-		for {
-			line, err := rl.Readline()
-			if err != nil { // EOF or Ctrl+C
-				if err == readline.ErrInterrupt {
-					inputChan <- ">>sigint"
-				} else {
-					inputChan <- ">>eof"
+	if !noInterface {
+		go func() {
+			for {
+				line, err := rl.Readline()
+				if err != nil { // EOF or Ctrl+C
+					if err == readline.ErrInterrupt {
+						inputChan <- ">>sigint"
+					} else {
+						inputChan <- ">>eof"
+					}
+					break
 				}
-				break
+				inputChan <- strings.TrimSpace(line)
 			}
-			inputChan <- strings.TrimSpace(line)
-		}
-	}()
+		}()
+	}
 
 	apiInputChan := make(chan api.ChatInput)
 
@@ -281,6 +292,9 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			}
 		}
 	}()
+
+	engineStartTime := time.Now()
+	lastWakeTime := time.Now()
 
 	// Start API server
 	go api.StartServer(apiInputChan, historyMgr, sched, func() string { return mindState })
@@ -313,6 +327,9 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			switch evt {
 			case escalator.EventConsolidate:
 				sysMsg := "[System: Memory consolidation triggered]"
+				if debugMode {
+					fmt.Fprintf(outWriter, "\033[90m%s\033[0m\n", sysMsg)
+				}
 				_ = historyMgr.Save("system", sysMsg, mindState)
 				responderSTM.Update("system", sysMsg)
 				reactorSTM.Update("system", sysMsg)
@@ -330,18 +347,22 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 					hasUnconsolidated = false
 				}
 			case escalator.EventEnterTempSleep:
-				sysMsg := "it has been more than 5 mins, starting idle time."
+				delay := os.Getenv("SYSTEM_TEMP_SLEEP_DELAY_MINS")
+				if delay == "" { delay = "5" }
+				sysMsg := fmt.Sprintf("it has been more than %s mins, starting idle time.", delay)
 				if debugMode {
-					fmt.Fprintf(rl.Stdout(), "[DEBUG] Entering Temp Sleep. Injecting system message.\n")
+					fmt.Fprintf(outWriter, "\033[90m[System: %s]\033[0m\n", sysMsg)
 				}
 				_ = historyMgr.Save("system", sysMsg, mindState)
 				responderSTM.Update("system", sysMsg)
 				reactorSTM.Update("system", sysMsg)
 				hasUnconsolidated = true
 			case escalator.EventEnterTrueSleep:
-				sysMsg := "it has been more than 3 hours, starting hiberation."
+				delay := os.Getenv("SYSTEM_TRUE_SLEEP_DELAY_MINS")
+				if delay == "" { delay = "180" }
+				sysMsg := fmt.Sprintf("it has been more than %s mins, starting hiberation.", delay)
 				if debugMode {
-					fmt.Fprintf(rl.Stdout(), "[DEBUG] Entering True Sleep (Hibernation). Injecting system message.\n")
+					fmt.Fprintf(outWriter, "\033[90m[System: %s]\033[0m\n", sysMsg)
 				}
 				_ = historyMgr.Save("system", sysMsg, mindState)
 				responderSTM.Update("system", sysMsg)
@@ -349,6 +370,9 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				hasUnconsolidated = true
 			case escalator.EventReflect:
 				sysMsg := "[System: Reflecting on past memories]"
+				if debugMode {
+					fmt.Fprintf(outWriter, "\033[90m%s\033[0m\n", sysMsg)
+				}
 				_ = historyMgr.Save("system", sysMsg, mindState)
 				responderSTM.Update("system", sysMsg)
 				reactorSTM.Update("system", sysMsg)
@@ -362,11 +386,14 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				for _, id := range matchedIDs {
 					_ = episodeMgr.LoadFromDisk(utils.ResolvePath(filepath.Join("Context", "episodes", id+".json")))
 					if debugMode {
-						fmt.Fprintf(rl.Stdout(), "[DEBUG] Reflect (Background): loaded episode %s\n", id)
+						fmt.Fprintf(outWriter, "[DEBUG] Reflect (Background): loaded episode %s\n", id)
 					}
 				}
 			case escalator.EventIntrospect:
 				sysMsg := "[System: Deep introspection initiated]"
+				if debugMode {
+					fmt.Fprintf(outWriter, "\033[90m%s\033[0m\n", sysMsg)
+				}
 				_ = historyMgr.Save("system", sysMsg, mindState)
 				responderSTM.Update("system", sysMsg)
 				reactorSTM.Update("system", sysMsg)
@@ -385,6 +412,9 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 
 				// Inject the system cue into all active memory contexts
 				sysMsg := "[System: Proactive message triggered]"
+				if debugMode {
+					fmt.Fprintf(outWriter, "\033[90m%s\033[0m\n", sysMsg)
+				}
 				_ = historyMgr.Save("system", sysMsg, mindState)
 				reactorSTM.Update("system", sysMsg)
 				responderSTM.Update("system", sysMsg)
@@ -397,7 +427,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 					
 					for _, line := range strings.Split(reply, "\n") {
 						if strings.TrimSpace(line) != "" {
-							fmt.Fprintf(rl.Stdout(), "\033[34m> %s\033[0m\n", line)
+							fmt.Fprintf(outWriter, "\033[34m> %s\033[0m\n", line)
 						}
 					}
 					
@@ -410,47 +440,77 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 					hasUnconsolidated = true
 
 					if respState, err := reactorAgent.React(ctx, reactorSTM.Get()); err == nil {
-						mindState = fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", respState.ModelAttention, respState.NegativeEmotion, respState.PositiveEmotion, respState.UserAttention)
+						newMindState := fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", respState.ModelAttention, respState.NegativeEmotion, respState.PositiveEmotion, respState.UserAttention)
+						if newMindState != "0.00:0.00:0.00:0.00" {
+							mindState = newMindState
+						} else if debugMode {
+							fmt.Fprintf(outWriter, "[DEBUG] Reactor Error: parsed 0:0:0:0. Keeping previous mindstate %s\n", mindState)
+						}
 					} else if debugMode {
-						fmt.Fprintf(rl.Stdout(), "[DEBUG] Reactor Error (Proactive): %v\n", err)
+						fmt.Fprintf(outWriter, "[DEBUG] Reactor Error (Proactive): %v\n", err)
 					}
 				}
 			}
 
 		case rawInput := <-activeProcessChan:
+			input := strings.TrimSpace(rawInput.Message)
+			
+			// Handle exits immediately before triggering wake logic
+			if input == ">>exit" {
+				if rl != nil { rl.Close() }
+				fmt.Printf("\r\033[2K\r") // Clear entire line and return to start
+				sysMsg := "session has ended"
+				_ = historyMgr.Save("system", sysMsg, mindState)
+				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.GetMentalEnergy())
+				os.Exit(0)
+			} else if input == ">>sigint" || input == ">>eof" {
+				if rl != nil { rl.Close() }
+				fmt.Printf("\r\033[2K\r")
+				sysMsg := "session ended abruptly"
+				_ = historyMgr.Save("system", sysMsg, mindState)
+				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.GetMentalEnergy())
+				fmt.Println("\033[31m> session terminated abruptly.\033[0m")
+				os.Exit(0)
+			}
+
 			if sched.Engine.GetCurrentSleepMode() == 2 {
 				sched.Engine.SetSleepMode(0) // Wake up
+				lastWakeTime = time.Now()
 				sysMsg := "[System: you just woke up from sleep]"
 				_ = historyMgr.Save("system", sysMsg, mindState)
 				reactorSTM.Update("system", sysMsg)
 				responderSTM.Update("system", sysMsg)
-				fmt.Fprintf(rl.Stdout(), "\033[90m%s\033[0m\n", sysMsg)
+				if debugMode {
+					fmt.Fprintf(outWriter, "\033[90m%s\033[0m\n", sysMsg)
+				}
 			}
 
-			input := strings.TrimSpace(rawInput.Message)
 			if input == "" {
 				continue
 			}
 
 			if input == ">>debug" {
-				fmt.Fprintf(rl.Stdout(), "system: mindstate: %s | HR: %.1f | energy: %.0f/100\n", mindState, sched.Engine.GetHeartrate(), sched.Engine.GetMentalEnergy())
-				fmt.Fprintf(rl.Stdout(), "system: active episodes: %d | pinned: %q\n", len(episodeMgr.GetActive()), episodeMgr.GetPinnedID())
+				uptime := time.Since(lastWakeTime).Round(time.Second)
+				totalUptime := time.Since(engineStartTime).Round(time.Second)
+				fmt.Fprintf(outWriter, "system: mindstate: %s | HR: %.1f | energy: %.0f/100\n", mindState, sched.Engine.GetHeartrate(), sched.Engine.GetMentalEnergy())
+				fmt.Fprintf(outWriter, "system: active episodes: %d | pinned: %q\n", len(episodeMgr.GetActive()), episodeMgr.GetPinnedID())
+				fmt.Fprintf(outWriter, "system: uptime: %v | totalUptime: %v\n", uptime, totalUptime)
 				continue
 			} else if strings.HasPrefix(input, ">>mindstate ") {
 				valStr := strings.TrimSpace(strings.TrimPrefix(input, ">>mindstate "))
 				var ma, ne, pe, ua float64
 				_, err := fmt.Sscanf(valStr, "%f:%f:%f:%f", &ma, &ne, &pe, &ua)
 				if err != nil || ma < 0.0 || ma > 1.0 || ne < 0.0 || ne > 1.0 || pe < 0.0 || pe > 1.0 || ua < 0.0 || ua > 1.0 {
-					fmt.Fprintln(rl.Stdout(), "system: error: mindstate must be four floats (0.0 to 1.0) separated by colons (e.g. 0.9:0.3:0.5:0.7).")
+					fmt.Fprintln(outWriter, "system: error: mindstate must be four floats (0.0 to 1.0) separated by colons (e.g. 0.9:0.3:0.5:0.7).")
 				} else {
 					mindState = fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", ma, ne, pe, ua)
-					fmt.Fprintf(rl.Stdout(), "system: mindstate updated to %s.\n", mindState)
+					fmt.Fprintf(outWriter, "system: mindstate updated to %s.\n", mindState)
 				}
 				continue
 			} else if input == ">>consolidate" {
 				newEpisodes, err := consolidation.Consolidate(historyMgr)
 				if err != nil {
-					fmt.Fprintf(rl.Stdout(), "system: error: consolidation failed: %v\n", err)
+					fmt.Fprintf(outWriter, "system: error: consolidation failed: %v\n", err)
 				} else {
 					for _, ep := range newEpisodes {
 						episodeMgr.Push(episode_memory.EpisodeSummary{
@@ -461,7 +521,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 						})
 					}
 					hasUnconsolidated = false
-					fmt.Fprintf(rl.Stdout(), "system: consolidation completed successfully. %d episode(s) added.\n", len(newEpisodes))
+					fmt.Fprintf(outWriter, "system: consolidation completed successfully. %d episode(s) added.\n", len(newEpisodes))
 				}
 				continue
 			} else if input == ">>reflect" {
@@ -472,7 +532,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				}
 				matchedIDs, err := reflector.Reflect(mindState, episodes)
 				if err != nil {
-					fmt.Fprintf(rl.Stdout(), "system: error: reflection failed: %v\n", err)
+					fmt.Fprintf(outWriter, "system: error: reflection failed: %v\n", err)
 				} else {
 					loaded := 0
 					for _, id := range matchedIDs {
@@ -480,30 +540,17 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 							loaded++
 						}
 					}
-					fmt.Fprintf(rl.Stdout(), "system: reflection completed. Found %d matching episodes, loaded %d into active memory.\n", len(matchedIDs), loaded)
+					fmt.Fprintf(outWriter, "system: reflection completed. Found %d matching episodes, loaded %d into active memory.\n", len(matchedIDs), loaded)
 				}
 				continue
 			} else if strings.HasPrefix(input, ">>introspect ") {
 				episodeID := strings.TrimSpace(strings.TrimPrefix(input, ">>introspect "))
 				if err := reflector.Introspect(episodeID); err != nil {
-					fmt.Fprintf(rl.Stdout(), "system: error: introspection failed: %v\n", err)
+					fmt.Fprintf(outWriter, "system: error: introspection failed: %v\n", err)
 				} else {
-					fmt.Fprintf(rl.Stdout(), "system: introspection completed for %s. Reflection saved.\n", episodeID)
+					fmt.Fprintf(outWriter, "system: introspection completed for %s. Reflection saved.\n", episodeID)
 				}
 				continue
-			} else if input == ">>exit" {
-				fmt.Fprintf(rl.Stdout(), "\r\033[K")
-				sysMsg := "session has ended"
-				_ = historyMgr.Save("system", sysMsg, mindState)
-				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.GetMentalEnergy())
-				return
-			} else if input == ">>sigint" || input == ">>eof" {
-				fmt.Fprintf(rl.Stdout(), "\r\033[K")
-				sysMsg := "session ended abruptly"
-				_ = historyMgr.Save("system", sysMsg, mindState)
-				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.GetMentalEnergy())
-				fmt.Fprintf(rl.Stdout(), "\033[31m> session terminated abruptly.\033[0m\n")
-				return
 			}
 
 			sched.Engine.OnUserMessage(mindState)
@@ -516,7 +563,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			done := make(chan bool)
 			go func() {
 				// With async printing, we avoid scrambling the terminal with raw \r returns.
-				fmt.Fprintf(rl.Stdout(), "\033[34m> [thinking...]\033[0m\n")
+				fmt.Fprintf(outWriter, "\033[34m> [thinking...]\033[0m\n")
 				<-done
 			}()
 
@@ -536,7 +583,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				done <- true
 				
 				if debugMode {
-					fmt.Fprintf(rl.Stdout(), "[DEBUG] Model attention is < 0.20. Randomly skipping this turn (1/3 chance).\n")
+					fmt.Fprintf(outWriter, "[DEBUG] Model attention is < 0.20. Randomly skipping this turn (1/3 chance).\n")
 				}
 				
 				
@@ -546,7 +593,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 					rawInput.ResponseChan <- reply
 				}
 
-				fmt.Fprintf(rl.Stdout(), "\033[34m> %s\033[0m\n", reply)
+				fmt.Fprintf(outWriter, "\033[34m> %s\033[0m\n", reply)
 				_ = historyMgr.Save(personalityName, reply, mindState)
 				responderSTM.Update("assistant", reply)
 				reactorSTM.Update("assistant", reply)
@@ -557,13 +604,18 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			unreactedChars += len(input)
 			if unreactedChars >= reactorCharThreshold {
 				if respState, err := reactorAgent.React(ctx, reactorSTM.Get()); err == nil {
-					mindState = fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", respState.ModelAttention, respState.NegativeEmotion, respState.PositiveEmotion, respState.UserAttention)
-					unreactedChars = 0
-					if debugMode {
-						fmt.Fprintf(rl.Stdout(), "[DEBUG] Reactor (Pre-Response): Mindstate updated to %s\n", mindState)
+					newMindState := fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", respState.ModelAttention, respState.NegativeEmotion, respState.PositiveEmotion, respState.UserAttention)
+					if newMindState != "0.00:0.00:0.00:0.00" {
+						mindState = newMindState
+						unreactedChars = 0
+						if debugMode {
+							fmt.Fprintf(outWriter, "[DEBUG] Reactor (Pre-Response): Mindstate updated to %s\n", mindState)
+						}
+					} else if debugMode {
+						fmt.Fprintf(outWriter, "[DEBUG] Reactor Error (Pre-Response): parsed 0:0:0:0. Keeping previous mindstate %s\n", mindState)
 					}
 				} else if debugMode {
-					fmt.Fprintf(rl.Stdout(), "[DEBUG] Reactor Error (Pre-Response): %v\n", err)
+					fmt.Fprintf(outWriter, "[DEBUG] Reactor Error (Pre-Response): %v\n", err)
 				}
 			}
 
@@ -580,10 +632,10 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			reply, usefulEpisodeID, err := resp.Respond(ctx, input, energyHint, responderSTM.GetNoFlags(), episodes)
 			if err != nil {
 				done <- true
-				fmt.Fprintf(rl.Stdout(), "\033[31merror: failed to generate response: %v\033[0m\n", err)
+				fmt.Fprintf(outWriter, "\033[31merror: failed to generate response: %v\033[0m\n", err)
 			} else {
 				if debugMode {
-					fmt.Fprintf(rl.Stdout(), "[DEBUG] Responder: Output received (Useful Episode ID: %q)\n", usefulEpisodeID)
+					fmt.Fprintf(outWriter, "[DEBUG] Responder: Output received (Useful Episode ID: %q)\n", usefulEpisodeID)
 				}
 				
 				// If the model identified a useful episode, pin it to prevent eviction
@@ -595,13 +647,18 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				unreactedChars += len(reply)
 				if unreactedChars >= reactorCharThreshold {
 					if respState, err := reactorAgent.React(ctx, reactorSTM.Get()); err == nil {
-						mindState = fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", respState.ModelAttention, respState.NegativeEmotion, respState.PositiveEmotion, respState.UserAttention)
-						unreactedChars = 0
-						if debugMode {
-							fmt.Fprintf(rl.Stdout(), "[DEBUG] Reactor (Post-Response): Mindstate updated to %s\n", mindState)
+						newMindState := fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", respState.ModelAttention, respState.NegativeEmotion, respState.PositiveEmotion, respState.UserAttention)
+						if newMindState != "0.00:0.00:0.00:0.00" {
+							mindState = newMindState
+							unreactedChars = 0
+							if debugMode {
+								fmt.Fprintf(outWriter, "[DEBUG] Reactor (Post-Response): Mindstate updated to %s\n", mindState)
+							}
+						} else if debugMode {
+							fmt.Fprintf(outWriter, "[DEBUG] Reactor Error (Post-Response): parsed 0:0:0:0. Keeping previous mindstate %s\n", mindState)
 						}
 					} else if debugMode {
-						fmt.Fprintf(rl.Stdout(), "[DEBUG] Reactor Error (Post-Response): %v\n", err)
+						fmt.Fprintf(outWriter, "[DEBUG] Reactor Error (Post-Response): %v\n", err)
 					}
 				}
 
@@ -620,7 +677,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 
 				for _, line := range strings.Split(reply, "\n") {
 					if strings.TrimSpace(line) != "" {
-						fmt.Fprintf(rl.Stdout(), "\033[34m> %s\033[0m\n", line)
+						fmt.Fprintf(outWriter, "\033[34m> %s\033[0m\n", line)
 					}
 				}
 				sched.Engine.OnResponse()

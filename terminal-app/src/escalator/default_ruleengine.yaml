@@ -18,12 +18,12 @@ hr_modifiers:
 rules:
   # -- Sleep State Machine --
   - name: "EnterTrueSleep"
-    condition: "IdleDurationMins >= 180 && CurrentSleepMode != 2"
+    condition: "IdleDurationMins >= SYSTEM_TRUE_SLEEP_DELAY_MINS && CurrentSleepMode != 2"
     action: "ENTER_TRUE_SLEEP"
     priority: 10
 
   - name: "EnterTempSleep"
-    condition: "IdleDurationMins >= 5 && CurrentSleepMode != 1 && CurrentSleepMode != 2"
+    condition: "IdleDurationMins >= SYSTEM_TEMP_SLEEP_DELAY_MINS && CurrentSleepMode != 1 && CurrentSleepMode != 2"
     action: "ENTER_TEMP_SLEEP"
     priority: 9
 

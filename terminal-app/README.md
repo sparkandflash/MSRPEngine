@@ -158,6 +158,15 @@ The **Reflector Module** (located in `idle_methods/reflector/`) handles dynamic 
 *   **Reflect (`>>reflect`):** Scans `index.jsonl` for past episodes where the Attention Score (Model Attention + User Attention) was *higher* than the current conversation's attention. It then performs a local Cosine Similarity search using its background `ollama` sidecar engine (a subprocess it manages: spawned on start, killed on exit) to find the most semantically relevant memories, pushing them into active context.
 *   **Introspect (`>>introspect <id>`):** Invokes the Summariser Agent using a specialized `introspection.txt` prompt. It analyzes a past conversation episode to evaluate how the Persona could have responded differently, saving the resulting alternative strategies to `Context/episodes/reflections/` for long-term behavioral adjustment.
 
+**Remote Embedding Configuration:**
+By default, the engine boots a local Ollama sidecar for zero-dependency embeddings. To save resources or run entirely serverless, you can route embedding generation to a remote provider (like Cohere or your own API) by setting these environment variables:
+```env
+EMBEDDING_API_URL=https://api.cohere.com/v1/embed
+EMBEDDING_MODEL=embed-english-v3.0
+EMBEDDING_API_KEY=your_cohere_key_here
+```
+If `EMBEDDING_API_URL` is detected, the engine will safely skip booting the local sidecar.
+
 ---
 
 ## Responder Types in Detail

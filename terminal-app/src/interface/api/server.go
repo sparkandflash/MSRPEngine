@@ -56,7 +56,9 @@ func StartServer(inputChan chan<- ChatInput, historyMgr *consolidator.HistoryMan
 	mux.HandleFunc("/sendMessage", s.authMiddleware(s.handleSendMessage))
 
 	port := getEnv("PORT", "8080")
-	fmt.Printf("\033[36m[System: Web API started on port %s]\033[0m\n", port)
+	if getEnv("DEBUG", "0") == "1" || getEnv("DEBUG", "false") == "true" {
+		fmt.Printf("\033[36m[System: Web API started on port %s]\033[0m\n", port)
+	}
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		fmt.Printf("Web API Error: %v\n", err)
 	}

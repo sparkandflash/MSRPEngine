@@ -53,6 +53,8 @@ type Env struct {
 
 	SYSTEM_CONSOLIDATION_FREQ_MINS float64
 	SYSTEM_TEMP_SLEEP_CYCLE_MINS   float64
+	SYSTEM_TEMP_SLEEP_DELAY_MINS   float64
+	SYSTEM_TRUE_SLEEP_DELAY_MINS   float64
 }
 
 func (e *DefaultRuleEngine) initRules() {
@@ -194,6 +196,20 @@ func (e *DefaultRuleEngine) buildEnv(mindState string, hasUnconsolidatedMessages
 		}
 	}
 
+	tempSleepDelayMins := 5.0
+	if val := os.Getenv("SYSTEM_TEMP_SLEEP_DELAY_MINS"); val != "" {
+		if m, err := strconv.ParseFloat(val, 64); err == nil && m > 0 {
+			tempSleepDelayMins = m
+		}
+	}
+	
+	trueSleepDelayMins := 180.0
+	if val := os.Getenv("SYSTEM_TRUE_SLEEP_DELAY_MINS"); val != "" {
+		if m, err := strconv.ParseFloat(val, 64); err == nil && m > 0 {
+			trueSleepDelayMins = m
+		}
+	}
+
 	return Env{
 		Heartrate:    e.Heartrate,
 		MentalEnergy: e.MentalEnergy,
@@ -217,6 +233,8 @@ func (e *DefaultRuleEngine) buildEnv(mindState string, hasUnconsolidatedMessages
 
 		SYSTEM_CONSOLIDATION_FREQ_MINS: freqMins,
 		SYSTEM_TEMP_SLEEP_CYCLE_MINS:   tempSleepCycleMins,
+		SYSTEM_TEMP_SLEEP_DELAY_MINS:   tempSleepDelayMins,
+		SYSTEM_TRUE_SLEEP_DELAY_MINS:   trueSleepDelayMins,
 	}
 }
 
@@ -241,7 +259,7 @@ func (e *DefaultRuleEngine) EvaluateState(mindState string, hasUnconsolidatedMes
 			e.CurrentSleepMode = 1
 		}
 		if highestPriorityRule.Action == EventNothing && e.CurrentSleepMode > 0 {
-			if env.IdleDurationMins < 5 {
+			if env.IdleDurationMins < env.SYSTEM_TEMP_SLEEP_DELAY_MINS {
 				e.CurrentSleepMode = 0
 			}
 		}
@@ -249,7 +267,7 @@ func (e *DefaultRuleEngine) EvaluateState(mindState string, hasUnconsolidatedMes
 	}
 	
 	// Default wake state recovery if idle time falls
-	if env.IdleDurationMins < 5 {
+	if env.IdleDurationMins < env.SYSTEM_TEMP_SLEEP_DELAY_MINS {
 		e.CurrentSleepMode = 0
 	}
 
