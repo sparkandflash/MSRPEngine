@@ -10,8 +10,9 @@ import (
 	"terminal-app/src/utils"
 )
 
-// Message represents a single chat turn with a role, content, mindstate, and stored flag.
+// Message represents a single chat turn with an ID, role, content, mindstate, and stored flag.
 type Message struct {
+	ID        string `json:"id"`
 	Author    string `json:"author"`
 	Content   string `json:"content"`
 	MindState string `json:"mindstate,omitempty"`
@@ -37,19 +38,20 @@ func (m *STMmanager) Get() []Message {
 	return m.messages
 }
 
-// GetNoFlags returns all messages in STM with only Author and Content populated.
+// GetNoFlags returns all messages in STM with only ID, Author, and Content populated.
 // MindState and Stored flags are omitted — this is the clean view sent to the responder LLM.
 func (m *STMmanager) GetNoFlags() []Message {
 	clean := make([]Message, len(m.messages))
 	for i, msg := range m.messages {
-		clean[i] = Message{Author: msg.Author, Content: msg.Content}
+		clean[i] = Message{ID: msg.ID, Author: msg.Author, Content: msg.Content}
 	}
 	return clean
 }
 
 // Update appends a message and discards older ones (FIFO) until the total character length is within the maxChars limit.
 func (m *STMmanager) Update(role string, content string) {
-	m.messages = append(m.messages, Message{Author: role, Content: content})
+	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
+	m.messages = append(m.messages, Message{ID: msgID, Author: role, Content: content})
 
 	// FIFO pruning based on the character length of the contents
 	for m.totalChars() > m.maxChars && len(m.messages) > 0 {
@@ -116,7 +118,8 @@ func NewHistoryManager(sessionID string) (*HistoryManager, error) {
 
 // Save appends a new message to the persistent history and writes the full log to disk.
 func (h *HistoryManager) Save(role string, content string, mindState string) error {
-	h.messages = append(h.messages, Message{Author: role, Content: content, MindState: mindState, Stored: false})
+	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
+	h.messages = append(h.messages, Message{ID: msgID, Author: role, Content: content, MindState: mindState, Stored: false})
 
 	data, err := json.MarshalIndent(h.messages, "", "  ")
 	if err != nil {

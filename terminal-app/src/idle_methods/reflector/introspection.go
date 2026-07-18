@@ -32,14 +32,46 @@ func Introspect(episodeID string) error {
 		return fmt.Errorf("failed to parse episode %s: %w", episodeID, err)
 	}
 
-	if len(episode.Messages) == 0 {
+	if len(episode.MessageIDs) == 0 {
 		return fmt.Errorf("episode %s has no messages to introspect", episodeID)
+	}
+
+	// Extract SessionID from EpisodeID (format: <SessionID>_ep_<timestamp>)
+	parts := strings.SplitN(episodeID, "_ep_", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid episode ID format: %s", episodeID)
+	}
+	sessionID := parts[0]
+
+	// Read full history to resolve MessageIDs
+	historyPath := utils.ResolvePath(filepath.Join("Context", "conversationHistory", fmt.Sprintf("%s.json", sessionID)))
+	historyData, err := os.ReadFile(historyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read conversation history %s: %w", sessionID, err)
+	}
+
+	// We need to define or import the Message struct. We can import consolidator and use consolidator.Message.
+	var fullHistory []map[string]interface{}
+	if err := json.Unmarshal(historyData, &fullHistory); err != nil {
+		return fmt.Errorf("failed to parse conversation history: %w", err)
+	}
+
+	// Build a map of msgID -> map for quick lookup
+	msgMap := make(map[string]map[string]interface{})
+	for _, msg := range fullHistory {
+		if id, ok := msg["id"].(string); ok {
+			msgMap[id] = msg
+		}
 	}
 
 	// 2. Format messages for the summariser
 	var convBuilder strings.Builder
-	for _, msg := range episode.Messages {
-		convBuilder.WriteString(fmt.Sprintf("%s: %s\n", msg.Author, msg.Content))
+	for _, msgID := range episode.MessageIDs {
+		if msg, ok := msgMap[msgID]; ok {
+			author, _ := msg["author"].(string)
+			content, _ := msg["content"].(string)
+			convBuilder.WriteString(fmt.Sprintf("%s: %s\n", author, content))
+		}
 	}
 
 	// 3. Call SummariserAgent with the Introspection Prompt

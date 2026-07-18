@@ -17,12 +17,12 @@ import (
 
 // Episode represents the JSON structure of a consolidated episodic memory.
 type Episode struct {
-	ID            string                 `json:"id"`
-	Summary       string                 `json:"summary"`
-	Keywords      []string               `json:"keywords"`
-	PeakMindState string                 `json:"peak_mindstate"`
-	Conclusion    string                 `json:"conclusion"`
-	Messages      []consolidator.Message `json:"messages"`
+	ID            string   `json:"id"`
+	Summary       string   `json:"summary"`
+	Keywords      []string `json:"keywords"`
+	PeakMindState string   `json:"peak_mindstate"`
+	Conclusion    string   `json:"conclusion"`
+	MessageIDs    []string `json:"message_ids"`
 }
 
 // LLMResponse matches the structured JSON expected from the Summariser LLM.
@@ -110,7 +110,7 @@ func Consolidate(hm *consolidator.HistoryManager) ([]EpisodeSummary, error) {
 
 	// Process the chunk
 	for chunkIdx, indices := range chunks {
-		var chunkMsgs []consolidator.Message
+		var chunkMsgIDs []string
 		var convBuilder strings.Builder
 
 		// Determine peak mindstate in the chunk based on (Negative + Positive Emotion) activation
@@ -119,7 +119,7 @@ func Consolidate(hm *consolidator.HistoryManager) ([]EpisodeSummary, error) {
 
 		for _, idx := range indices {
 			msg := messages[idx]
-			chunkMsgs = append(chunkMsgs, msg)
+			chunkMsgIDs = append(chunkMsgIDs, msg.ID)
 			convBuilder.WriteString(fmt.Sprintf("%s: %s\n", msg.Author, msg.Content))
 
 			activation := calculateActivationScore(msg.MindState)
@@ -155,7 +155,7 @@ func Consolidate(hm *consolidator.HistoryManager) ([]EpisodeSummary, error) {
 			Keywords:      llmResp.Keywords,
 			PeakMindState: peakMindState,
 			Conclusion:    llmResp.Conclusion,
-			Messages:      chunkMsgs,
+			MessageIDs:    chunkMsgIDs,
 		}
 
 		episodePath := filepath.Join(episodesDir, fmt.Sprintf("%s.json", episodeID))
