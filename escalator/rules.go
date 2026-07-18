@@ -55,6 +55,16 @@ func (e *RuleEngine) UpdateHeartrate(mindState string) {
 	if e.Heartrate > 180.0 {
 		e.Heartrate = 180.0
 	}
+
+	// Mental Energy regen: if HR is at or near resting (≤ 72), recover 10 energy per tick.
+	// This simulates Lyra "recovering" during calm periods.
+	restingThreshold := 72.0
+	if e.Heartrate <= restingThreshold {
+		e.MentalEnergy += 10.0
+		if e.MentalEnergy > 100.0 {
+			e.MentalEnergy = 100.0
+		}
+	}
 }
 
 // OnUserMessage updates moving average delay and applies immediate HR spikes.

@@ -3,6 +3,7 @@ package escalator
 import (
 	"context"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -26,9 +27,15 @@ func NewScheduler(getMindState func() string, hasUnconsolidated func() bool) *Sc
 	}
 }
 
-// Run starts the 5-second background ticker.
+// Run starts the background ticker. Duration is read from LYRA_TICK_SECONDS (default 5).
 func (s *Scheduler) Run(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+	tickSecs := 5
+	if v := os.Getenv("LYRA_TICK_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			tickSecs = n
+		}
+	}
+	ticker := time.NewTicker(time.Duration(tickSecs) * time.Second)
 	defer ticker.Stop()
 
 	for {

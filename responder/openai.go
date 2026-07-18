@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"lyra/consolidator"
@@ -70,7 +71,19 @@ func (r *OpenAIResponder) respondInternal(ctx context.Context, prompt string, mi
 
 	// Format context and user input as readable text so small models don't get confused by raw JSON
 	var promptBuilder bytes.Buffer
-	promptBuilder.WriteString(fmt.Sprintf("[Current Mindstate: %s]\n", mindState))
+
+	// Extract optional energy hint appended as "mindstate|energy:N"
+	actualMindState := mindState
+	energyLabel := ""
+	if idx := strings.Index(mindState, "|energy:"); idx != -1 {
+		actualMindState = mindState[:idx]
+		energyLabel = mindState[idx+8:] // everything after "|energy:"
+	}
+
+	promptBuilder.WriteString(fmt.Sprintf("[Current Mindstate: %s]\n", actualMindState))
+	if energyLabel != "" {
+		promptBuilder.WriteString(fmt.Sprintf("[Mental Energy: %s/100]\n", energyLabel))
+	}
 	
 	if len(episodes) > 0 {
 		promptBuilder.WriteString("\n[Recalled Episodic Memories]\n")

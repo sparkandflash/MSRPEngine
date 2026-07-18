@@ -95,9 +95,9 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				mindState = msg.MindState
 			}
 		}
-		fmt.Printf("\033[32m[Session %s Restored (Mindstate: %s)]\033[0m\n", historyMgr.SessionID, mindState)
+		fmt.Printf("\033[34m> [Session %s Restored (Mindstate: %s)]\033[0m\n", historyMgr.SessionID, mindState)
 	} else {
-		fmt.Println("\033[32mhello, nice to meet you.\033[0m")
+		fmt.Println("\033[34m> hello, nice to meet you.\033[0m")
 	}
 
 	// State for rule engine integration
@@ -148,7 +148,10 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				}
 				matchedIDs, _ := reflector.Reflect(mindState, episodes)
 				for _, id := range matchedIDs {
-					_ = episodeMgr.LoadFromDisk(id)
+					_ = episodeMgr.LoadFromDisk("Context/episodes/" + id + ".json")
+					if debugMode {
+						fmt.Printf("[DEBUG] Reflect (Background): loaded episode %s\n", id)
+					}
 				}
 			case escalator.EventIntrospect:
 				activeEps := episodeMgr.GetActive()
@@ -173,7 +176,11 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 					}
 					
 					fmt.Print("\r\033[K") // Clear input lock text
-					fmt.Printf("\033[32m%s\033[0m\n", reply)
+					for _, line := range strings.Split(reply, "\n") {
+						if line != "" {
+							fmt.Printf("\033[34m> %s\033[0m\n", line)
+						}
+					}
 					
 					_ = historyMgr.Save("assistant", reply, mindState)
 					responderSTM.Update("assistant", reply)
@@ -204,7 +211,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			}
 
 			if input == ">>debug" {
-				fmt.Printf("debug: mindstate: %s | HR: %.1f\n", mindState, sched.Engine.Heartrate)
+				fmt.Printf("debug: mindstate: %s | HR: %.1f | energy: %.0f/100\n", mindState, sched.Engine.Heartrate, sched.Engine.MentalEnergy)
 				fmt.Printf("debug: active episodes: %d | pinned: %q\n", len(episodeMgr.GetActive()), episodeMgr.GetPinnedID())
 				fmt.Print("> ")
 				continue
@@ -251,7 +258,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				} else {
 					loaded := 0
 					for _, id := range matchedIDs {
-						if err := episodeMgr.LoadFromDisk(id); err == nil {
+						if err := episodeMgr.LoadFromDisk("Context/episodes/" + id + ".json"); err == nil {
 							loaded++
 						}
 					}
@@ -269,7 +276,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				fmt.Print("> ")
 				continue
 			} else if input == "exit" || input == "quit" {
-				fmt.Println("\033[32mgoodbye!\033[0m")
+				fmt.Println("\033[34m> goodbye!\033[0m")
 				return
 			}
 
@@ -282,7 +289,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			startTime := time.Now()
 			done := make(chan bool)
 			go func() {
-				fmt.Print("\033[32mthinking")
+				fmt.Print("\033[34m> thinking")
 				ticker := time.NewTicker(500 * time.Millisecond)
 				defer ticker.Stop()
 				for {
@@ -315,7 +322,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				}
 				
 				reply := "no response"
-				fmt.Printf("\033[32m%s\033[0m\n", reply)
+				fmt.Printf("\033[34m> %s\033[0m\n", reply)
 				_ = historyMgr.Save("assistant", reply, mindState)
 				responderSTM.Update("assistant", reply)
 				reactorSTM.Update("assistant", reply)
@@ -341,7 +348,9 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			}
 
 			// Respond using responder's clean STM (no stored flags) + active episodes
-			reply, usefulEpisodeID, err := resp.Respond(ctx, input, mindState, responderSTM.GetNoFlags(), episodes)
+			// Pass mental energy as a length hint appended to the mindstate string.
+			energyHint := fmt.Sprintf("%s|energy:%.0f", mindState, sched.Engine.MentalEnergy)
+			reply, usefulEpisodeID, err := resp.Respond(ctx, input, energyHint, responderSTM.GetNoFlags(), episodes)
 			if err != nil {
 				done <- true
 				fmt.Printf("\n\033[31merror: failed to generate response: %v\033[0m\n", err)
@@ -374,7 +383,12 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				responderSTM.Update("assistant", reply)
 				reactorSTM.Update("assistant", reply)
 
-				fmt.Printf("\033[32m%s\033[0m\n", reply)
+				for _, line := range strings.Split(reply, "\n") {
+					if line != "" {
+						fmt.Printf("\033[34m> %s\033[0m\n", line)
+					}
+				}
+				sched.Engine.OnResponse()
 			}
 			
 			fmt.Print("> ")

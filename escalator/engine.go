@@ -20,6 +20,7 @@ const (
 type RuleEngine struct {
 	// Internal State
 	Heartrate              float64
+	MentalEnergy           float64 // 0–100. Drains per response, regens at resting HR.
 	MovingAverageUserDelay time.Duration
 
 	// Timestamps
@@ -36,6 +37,7 @@ func NewRuleEngine() *RuleEngine {
 	now := time.Now()
 	return &RuleEngine{
 		Heartrate:              70.0,
+		MentalEnergy:           100.0,
 		MovingAverageUserDelay: 10 * time.Second, // Default starting assumption
 		LastUserMessage:        now,
 		LastAssistantMessage:   now,
@@ -43,5 +45,19 @@ func NewRuleEngine() *RuleEngine {
 		LastReflection:         now,
 		LastIntrospection:      now,
 		LastProactiveMessage:   now,
+	}
+}
+
+// OnResponse is called each time Lyra sends a reply.
+// It drains mental energy by 10 and slightly drops the heartrate.
+func (e *RuleEngine) OnResponse() {
+	e.MentalEnergy -= 10.0
+	if e.MentalEnergy < 0 {
+		e.MentalEnergy = 0
+	}
+	// Each response costs a little HR too (cognitive effort)
+	e.Heartrate -= 2.0
+	if e.Heartrate < 40.0 {
+		e.Heartrate = 40.0
 	}
 }

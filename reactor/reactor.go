@@ -161,8 +161,18 @@ func (r *ReactorAgent) reactMock(history []consolidator.Message) (ReactorRespons
 	return resp, nil
 }
 
-// cleanJSONResponse strips markdown code blocks or wrappers sometimes added by LLMs.
+// cleanJSONResponse strips markdown fences, non-breaking spaces, and any
+// surrounding garbage, then extracts the first balanced {...} JSON object.
 func cleanJSONResponse(raw string) string {
+	// 1. Normalize unicode whitespace (e.g. \u00a0 non-breaking spaces → regular space)
+	raw = strings.Map(func(r rune) rune {
+		if r == '\u00a0' || r == '\u200b' || r == '\ufeff' {
+			return ' '
+		}
+		return r
+	}, raw)
+
+	// 2. Strip markdown code fences
 	raw = strings.TrimSpace(raw)
 	if strings.HasPrefix(raw, "```json") {
 		raw = strings.TrimPrefix(raw, "```json")
@@ -171,7 +181,27 @@ func cleanJSONResponse(raw string) string {
 		raw = strings.TrimPrefix(raw, "```")
 		raw = strings.TrimSuffix(raw, "```")
 	}
-	return strings.TrimSpace(raw)
+	raw = strings.TrimSpace(raw)
+
+	// 3. Extract the first balanced {...} block (handles garbage before/after JSON)
+	start := strings.Index(raw, "{")
+	if start == -1 {
+		return raw
+	}
+	depth := 0
+	for i := start; i < len(raw); i++ {
+		switch raw[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return strings.TrimSpace(raw[start : i+1])
+			}
+		}
+	}
+	// Fell off the end — return what we found from start
+	return strings.TrimSpace(raw[start:])
 }
 
 func (r *ReactorAgent) callLLM(ctx context.Context, prompt, systemInstruction string) (string, error) {
