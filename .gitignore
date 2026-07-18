@@ -6,3 +6,6 @@ Context/
 
 # Build Directory (Standalone Binaries and their Contexts)
 terminal-app/build/
+
+# Local Embedding Sidecar and ML Models
+terminal-app/.bin/

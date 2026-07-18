@@ -110,7 +110,6 @@ func Introspect(episodeID string) error {
 	reflectionData := map[string]interface{}{
 		"original_episode_id": episodeID,
 		"reflection_summary":  llmResp.Summary,
-		"keywords":            llmResp.Keywords,
 		"alternative_strategy": llmResp.Conclusion,
 	}
 	
@@ -141,7 +140,6 @@ func Introspect(episodeID string) error {
 	
 	writer.Write([]string{
 		episodeID,
-		strings.Join(llmResp.Keywords, ", "),
 		reflectionID,
 	})
 	writer.Flush()

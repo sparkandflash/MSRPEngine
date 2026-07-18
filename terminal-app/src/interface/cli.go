@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -75,6 +76,32 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 	if personalityName == "" {
 		personalityName = "lyra" // default fallback
 	}
+
+	// Check for local embedding engine sidecar
+	binDir := utils.ResolvePath(".bin")
+	ollamaPath := filepath.Join(binDir, "ollama")
+	if _, err := os.Stat(ollamaPath); os.IsNotExist(err) {
+		fmt.Println("system error: ollama bin and embedding model files are missing.")
+		os.Exit(1)
+	}
+
+	// Start Ollama sidecar
+	modelsDir := filepath.Join(binDir, "models")
+	ollamaCmd := exec.Command(ollamaPath, "serve")
+	ollamaCmd.Env = append(os.Environ(), 
+		fmt.Sprintf("OLLAMA_MODELS=%s", modelsDir),
+		"OLLAMA_HOST=127.0.0.1:11435",
+	)
+	
+	if err := ollamaCmd.Start(); err != nil {
+		fmt.Printf("system error: failed to start local embedding engine: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if ollamaCmd.Process != nil {
+			ollamaCmd.Process.Kill()
+		}
+	}()
 
 	// Initialize the responder agent from environment configuration
 	resp, err := responder.NewResponderFromEnv()
@@ -257,7 +284,6 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 						episodeMgr.Push(episode_memory.EpisodeSummary{
 							ID:            ep.ID,
 							Summary:       ep.Summary,
-							Keywords:      ep.Keywords,
 							PeakMindState: ep.PeakMindState,
 							Conclusion:    ep.Conclusion,
 						})
@@ -291,7 +317,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				activeEps := episodeMgr.GetActive()
 				episodes := make([]responder.EpisodeSummary, len(activeEps))
 				for i, ep := range activeEps {
-					episodes[i] = responder.EpisodeSummary{ID: ep.ID, Summary: ep.Summary, Keywords: ep.Keywords, PeakMindState: ep.PeakMindState, Conclusion: ep.Conclusion}
+					episodes[i] = responder.EpisodeSummary{ID: ep.ID, Summary: ep.Summary, PeakMindState: ep.PeakMindState, Conclusion: ep.Conclusion}
 				}
 				matchedIDs, _ := reflector.Reflect(mindState, episodes)
 				for _, id := range matchedIDs {
@@ -315,7 +341,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				activeEps := episodeMgr.GetActive()
 				episodes := make([]responder.EpisodeSummary, len(activeEps))
 				for i, ep := range activeEps {
-					episodes[i] = responder.EpisodeSummary{ID: ep.ID, Summary: ep.Summary, Keywords: ep.Keywords, PeakMindState: ep.PeakMindState, Conclusion: ep.Conclusion}
+					episodes[i] = responder.EpisodeSummary{ID: ep.ID, Summary: ep.Summary, PeakMindState: ep.PeakMindState, Conclusion: ep.Conclusion}
 				}
 
 				// Inject the system cue into all active memory contexts
@@ -387,7 +413,6 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 						episodeMgr.Push(episode_memory.EpisodeSummary{
 							ID:            ep.ID,
 							Summary:       ep.Summary,
-							Keywords:      ep.Keywords,
 							PeakMindState: ep.PeakMindState,
 							Conclusion:    ep.Conclusion,
 						})
@@ -400,7 +425,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				activeEps := episodeMgr.GetActive()
 				episodes := make([]responder.EpisodeSummary, len(activeEps))
 				for i, ep := range activeEps {
-					episodes[i] = responder.EpisodeSummary{ID: ep.ID, Summary: ep.Summary, Keywords: ep.Keywords, PeakMindState: ep.PeakMindState, Conclusion: ep.Conclusion}
+					episodes[i] = responder.EpisodeSummary{ID: ep.ID, Summary: ep.Summary, PeakMindState: ep.PeakMindState, Conclusion: ep.Conclusion}
 				}
 				matchedIDs, err := reflector.Reflect(mindState, episodes)
 				if err != nil {
@@ -495,7 +520,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			activeEps := episodeMgr.GetActive()
 			episodes := make([]responder.EpisodeSummary, len(activeEps))
 			for i, ep := range activeEps {
-				episodes[i] = responder.EpisodeSummary{ID: ep.ID, Summary: ep.Summary, Keywords: ep.Keywords, PeakMindState: ep.PeakMindState, Conclusion: ep.Conclusion}
+				episodes[i] = responder.EpisodeSummary{ID: ep.ID, Summary: ep.Summary, PeakMindState: ep.PeakMindState, Conclusion: ep.Conclusion}
 			}
 
 			// Respond using responder's clean STM (no stored flags) + active episodes

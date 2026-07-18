@@ -82,10 +82,6 @@ func TestConsolidationFlow(t *testing.T) {
 		t.Errorf("expected peak mindstate '0.90:0.80:0.20:0.70', got %q", ep.PeakMindState)
 	}
 
-	// Check mock keyword summaries worked
-	hasSkrillex := false
-	for _, kw := range ep.Keywords {
-		if kw == "skrillex" {
 			hasSkrillex = true
 			break
 		}

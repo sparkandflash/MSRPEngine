@@ -2,7 +2,6 @@ package consolidation
 
 import (
 	"context"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,16 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"terminal-app/src/utils"
 	"terminal-app/src/consolidator"
+	"terminal-app/src/embedder"
 	"terminal-app/src/summariser"
+	"terminal-app/src/utils"
 )
 
 // Episode represents the JSON structure of a consolidated episodic memory.
 type Episode struct {
 	ID            string   `json:"id"`
 	Summary       string   `json:"summary"`
-	Keywords      []string `json:"keywords"`
 	PeakMindState string   `json:"peak_mindstate"`
 	Conclusion    string   `json:"conclusion"`
 	MessageIDs    []string `json:"message_ids"`
@@ -28,7 +27,6 @@ type Episode struct {
 // LLMResponse matches the structured JSON expected from the Summariser LLM.
 type LLMResponse struct {
 	Summary    string   `json:"summary"`
-	Keywords   []string `json:"keywords"`
 	Conclusion string   `json:"conclusion"`
 }
 
@@ -37,7 +35,6 @@ type LLMResponse struct {
 type EpisodeSummary struct {
 	ID            string   `json:"id"`
 	Summary       string   `json:"summary"`
-	Keywords      []string `json:"keywords"`
 	PeakMindState string   `json:"peak_mindstate"`
 	Conclusion    string   `json:"conclusion"`
 }
@@ -142,7 +139,6 @@ func Consolidate(hm *consolidator.HistoryManager) ([]EpisodeSummary, error) {
 			// Resilient fallback if LLM output is not valid JSON
 			llmResp = LLMResponse{
 				Summary:    "Failed to parse model summary. raw response: " + rawJSON,
-				Keywords:   []string{"parsed-error"},
 				Conclusion: "Parsed error conclusion.",
 			}
 		}
@@ -152,7 +148,6 @@ func Consolidate(hm *consolidator.HistoryManager) ([]EpisodeSummary, error) {
 		episode := Episode{
 			ID:            episodeID,
 			Summary:       llmResp.Summary,
-			Keywords:      llmResp.Keywords,
 			PeakMindState: peakMindState,
 			Conclusion:    llmResp.Conclusion,
 			MessageIDs:    chunkMsgIDs,
@@ -168,9 +163,17 @@ func Consolidate(hm *consolidator.HistoryManager) ([]EpisodeSummary, error) {
 			return nil, fmt.Errorf("failed to write episode file %s: %w", episodePath, err)
 		}
 
-		// Append to central CSV Index
-		if err := appendToIndexCSV(episodesDir, peakMindState, llmResp.Keywords, episodeID); err != nil {
-			return nil, fmt.Errorf("failed to write to index CSV: %w", err)
+		// Generate Embedding
+		emb := embedder.NewLocalEmbedder()
+		vec, err := emb.Embed(context.Background(), llmResp.Summary)
+		if err != nil {
+			fmt.Printf("[DEBUG] Failed to generate embedding for %s: %v\n", episodeID, err)
+			vec = []float32{} // Fallback empty
+		}
+
+		// Append to JSONL Index
+		if err := appendToIndexJSONL(episodesDir, peakMindState, vec, episodeID); err != nil {
+			return nil, fmt.Errorf("failed to write to index JSONL: %w", err)
 		}
 
 		// Mark the messages in HistoryManager as stored on disk
@@ -184,7 +187,6 @@ func Consolidate(hm *consolidator.HistoryManager) ([]EpisodeSummary, error) {
 		newEpisodes = append(newEpisodes, EpisodeSummary{
 			ID:            episodeID,
 			Summary:       llmResp.Summary,
-			Keywords:      llmResp.Keywords,
 			PeakMindState: peakMindState,
 			Conclusion:    llmResp.Conclusion,
 		})
@@ -206,31 +208,32 @@ func calculateActivationScore(mindState string) float64 {
 	return ne + pe
 }
 
-// appendToIndexCSV writes the episode entry into the central episodes CSV index.
-func appendToIndexCSV(dir, peakMindState string, keywords []string, episodeID string) error {
-	csvPath := filepath.Join(dir, "index.csv")
-	fileExisted := true
-	if _, err := os.Stat(csvPath); os.IsNotExist(err) {
-		fileExisted = false
-	}
+type EpisodeIndex struct {
+	EpisodeID     string    `json:"episode_id"`
+	PeakMindState string    `json:"peak_mindstate"`
+	Embedding     []float32 `json:"embedding"`
+}
 
-	file, err := os.OpenFile(csvPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+// appendToIndexJSONL appends the episode embedding to the central index file.
+func appendToIndexJSONL(dir, peakMindState string, embedding []float32, episodeID string) error {
+	jsonlPath := filepath.Join(dir, "index.jsonl")
+	file, err := os.OpenFile(jsonlPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	if !fileExisted {
-		// Write headers
-		if err := writer.Write([]string{"mindstatescore", "keywords", "episodeid"}); err != nil {
-			return err
-		}
+	entry := EpisodeIndex{
+		EpisodeID:     episodeID,
+		PeakMindState: peakMindState,
+		Embedding:     embedding,
 	}
 
-	kwJoined := strings.Join(keywords, ", ")
-	row := []string{peakMindState, kwJoined, episodeID}
-	return writer.Write(row)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.Write(append(data, '\n'))
+	return err
 }

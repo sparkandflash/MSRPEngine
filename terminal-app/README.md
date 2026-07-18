@@ -70,7 +70,7 @@ flowchart TD
     subgraph Context & Memory
         STM[(Short-Term Memory)]:::memory
         EpiMem[(Episodic Memory Pool)]:::memory
-        Disk[(JSON History / index.csv)]:::memory
+        Disk[(JSON History / index.jsonl)]:::memory
     end
 
     %% Flow
@@ -131,7 +131,7 @@ A rolling history is sent inside the JSON payload to the model API under the `"h
 
 ### 2. Episodic Memory (Consolidation)
 Running `>>consolidate` invokes the **Summariser Agent**. It groups unstored conversation history, evaluates peak emotional states, and synthesizes JSON episodes.
-*   Episodes are saved to `Context/episodes/` and indexed in `index.csv`.
+*   Episodes are saved to `Context/episodes/` and their semantic embeddings are indexed in `index.jsonl`.
 *   These are injected back into the Responder's context dynamically, providing long-term relational memory.
 *   The LLM can pin the "most useful" episode to prevent it from being evicted.
 
@@ -154,8 +154,8 @@ The framework features a **Reactor Agent** packaged in `reactor/` that monitors 
 
 ## Reflector Module (Self-Analysis & Context)
 
-The **Reflector Module** (located in `idle_methods/reflector/`) handles dynamic context retrieval and introspective self-analysis:
-*   **Reflect (`>>reflect`):** Scans the `index.csv` for past episodes where the Attention Score (Model Attention + User Attention) was *higher* than the current conversation's attention. If it shares keywords with currently active episodes, it is pushed into the `EpisodeMemoryManager` to provide deep contextual anchoring.
+The **Reflector Module** (located in `idle_methods/reflector/`) handles dynamic context retrieval and introspective self-analysis using **offline semantic vector embeddings**:
+*   **Reflect (`>>reflect`):** Scans `index.jsonl` for past episodes where the Attention Score (Model Attention + User Attention) was *higher* than the current conversation's attention. It then performs a local Cosine Similarity search using its background `ollama` sidecar engine to find the most semantically relevant memories, pushing them into active context.
 *   **Introspect (`>>introspect <id>`):** Invokes the Summariser Agent using a specialized `introspection.txt` prompt. It analyzes a past conversation episode to evaluate how the Persona could have responded differently, saving the resulting alternative strategies to `Context/episodes/reflections/` for long-term behavioral adjustment.
 
 ---

@@ -19,7 +19,6 @@ import (
 type EpisodeSummary struct {
 	ID            string   `json:"id"`
 	Summary       string   `json:"summary"`
-	Keywords      []string `json:"keywords"`
 	PeakMindState string   `json:"peak_mindstate"`
 	Conclusion    string   `json:"conclusion"`
 }

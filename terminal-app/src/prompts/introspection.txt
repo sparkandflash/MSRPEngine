@@ -10,7 +10,6 @@ You MUST respond strictly in the following JSON format:
 ```json
 {
   "summary": "A detailed analysis of the conversation and {{PERSONALITY_NAME}}'s behavior, exploring alternative ways they could have responded.",
-  "keywords": ["keyword1", "keyword2"],
   "conclusion": "A concrete strategy for how {{PERSONALITY_NAME}} should handle similar situations in the future."
 }
 ```
