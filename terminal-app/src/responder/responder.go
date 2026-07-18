@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -176,7 +177,15 @@ func ValidateConfig(ctx context.Context, cfg Config) error {
 func loadEnvFile() {
 	file, err := os.Open(".env")
 	if err != nil {
-		return // .env file is optional
+		exePath, errExe := os.Executable()
+		if errExe != nil {
+			return // .env file is optional
+		}
+		exeDir := filepath.Dir(exePath)
+		file, err = os.Open(filepath.Join(exeDir, ".env"))
+		if err != nil {
+			return // .env file is optional
+		}
 	}
 	defer file.Close()
 

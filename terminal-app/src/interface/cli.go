@@ -71,6 +71,11 @@ func updateSessionCSV(sessionID, mindState string, mentalEnergy float64) {
 
 // Run starts the interactive chat interface for Lyra.
 func Run(newSession bool, reuseSession string, debugMode bool) {
+	personalityName := os.Getenv("SYSTEM_PERSONALITY_NAME")
+	if personalityName == "" {
+		personalityName = "lyra" // default fallback
+	}
+
 	// Initialize the responder agent from environment configuration
 	resp, err := responder.NewResponderFromEnv()
 	if err != nil {
@@ -310,11 +315,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 						}
 					}
 					
-					_ = historyMgr.Save("assistant", reply, mindState)
-					personalityName := os.Getenv("SYSTEM_PERSONALITY_NAME")
-					if personalityName == "" {
-						personalityName = "lyra" // default fallback
-					}
+					_ = historyMgr.Save(personalityName, reply, mindState)
 
 					// Background: Reactor update
 					// Save assistant's turn locally (Responder uses its own STM logic)
@@ -428,6 +429,9 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				<-done
 			}()
 
+			// Save user message to long-term history
+			_ = historyMgr.Save("user", input, mindState)
+
 			// Update both STMs
 			reactorSTM.Update("user", input)
 			responderSTM.Update("user", input)
@@ -446,7 +450,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				
 				reply := "no response"
 				fmt.Fprintf(rl.Stdout(), "\033[34m> %s\033[0m\n", reply)
-				_ = historyMgr.Save("assistant", reply, mindState)
+				_ = historyMgr.Save(personalityName, reply, mindState)
 				responderSTM.Update("assistant", reply)
 				reactorSTM.Update("assistant", reply)
 				continue
@@ -509,7 +513,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				done <- true
 				
 				// Save assistant response to long-term history and responder STM
-				_ = historyMgr.Save("assistant", reply, mindState)
+				_ = historyMgr.Save(personalityName, reply, mindState)
 				responderSTM.Update("assistant", reply)
 				reactorSTM.Update("assistant", reply)
 
