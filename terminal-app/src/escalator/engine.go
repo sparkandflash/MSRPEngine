@@ -17,9 +17,23 @@ const (
 	EventEnterTrueSleep   EventType = "ENTER_TRUE_SLEEP"
 )
 
-// RuleEngine maintains internal state (like Heartrate) and deterministically
-// evaluates rules to emit events.
-type RuleEngine struct {
+// RuleEngine is the interface for evaluating state and managing internal variables like heartrate and mental energy.
+type RuleEngine interface {
+	UpdateHeartrate(mindState string)
+	OnUserMessage(mindState string)
+	EvaluateState(mindState string, hasUnconsolidatedMessages bool) EventType
+	AcknowledgeEvent(evt EventType)
+	OnResponse()
+	ConsumeEnergy(amount float64)
+
+	GetHeartrate() float64
+	GetMentalEnergy() float64
+	SetMentalEnergy(energy float64)
+}
+
+// DefaultRuleEngine maintains internal state (like Heartrate) and deterministically
+// evaluates rules to emit events based on an embedded YAML rules file.
+type DefaultRuleEngine struct {
 	// Internal State
 	Heartrate              float64
 	MentalEnergy           float64 // 0–100. Drains per response, regens at resting HR.
@@ -33,12 +47,27 @@ type RuleEngine struct {
 	LastReflection       time.Time
 	LastIntrospection    time.Time
 	LastProactiveMessage time.Time
+
+	compiledModifiers []CompiledModifier
+	compiledRules     []CompiledRule
+}
+
+type CompiledModifier struct {
+	Condition interface{} // *vm.Program
+	Effect    interface{} // *vm.Program
+}
+
+type CompiledRule struct {
+	Name      string
+	Condition interface{} // *vm.Program
+	Action    EventType
+	Priority  int
 }
 
 // NewRuleEngine initializes a new engine with resting defaults.
-func NewRuleEngine() *RuleEngine {
+func NewRuleEngine() RuleEngine {
 	now := time.Now()
-	return &RuleEngine{
+	engine := &DefaultRuleEngine{
 		Heartrate:              70.0,
 		MentalEnergy:           100.0,
 		MovingAverageUserDelay: 10 * time.Second, // Default starting assumption
@@ -50,10 +79,24 @@ func NewRuleEngine() *RuleEngine {
 		LastIntrospection:      now,
 		LastProactiveMessage:   now,
 	}
+	engine.initRules()
+	return engine
+}
+
+func (e *DefaultRuleEngine) GetHeartrate() float64 {
+	return e.Heartrate
+}
+
+func (e *DefaultRuleEngine) GetMentalEnergy() float64 {
+	return e.MentalEnergy
+}
+
+func (e *DefaultRuleEngine) SetMentalEnergy(energy float64) {
+	e.MentalEnergy = energy
 }
 
 // ConsumeEnergy deducts mental energy and clamps to 0.
-func (e *RuleEngine) ConsumeEnergy(amount float64) {
+func (e *DefaultRuleEngine) ConsumeEnergy(amount float64) {
 	e.MentalEnergy -= amount
 	if e.MentalEnergy < 0 {
 		e.MentalEnergy = 0
@@ -62,7 +105,7 @@ func (e *RuleEngine) ConsumeEnergy(amount float64) {
 
 // OnResponse is called each time Lyra sends a reply.
 // It drains mental energy by 10 and slightly drops the heartrate.
-func (e *RuleEngine) OnResponse() {
+func (e *DefaultRuleEngine) OnResponse() {
 	e.ConsumeEnergy(10.0)
 	// Each response costs a little HR too (cognitive effort)
 	e.Heartrate -= 2.0

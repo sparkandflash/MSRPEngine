@@ -1,57 +1,118 @@
 package escalator
 
 import (
+	_ "embed"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
+	"gopkg.in/yaml.v3"
 )
 
-// UpdateHeartrate is called every tick. It decays HR towards resting (70)
-// and applies spikes based on the current mindstate and user delay.
-func (e *RuleEngine) UpdateHeartrate(mindState string) {
+//go:embed default_ruleengine.yaml
+var defaultRulesYAML []byte
+
+type RuleConfig struct {
+	HRModifiers []struct {
+		Condition string `yaml:"condition"`
+		Effect    string `yaml:"effect"`
+	} `yaml:"hr_modifiers"`
+	Rules []struct {
+		Name      string `yaml:"name"`
+		Condition string `yaml:"condition"`
+		Action    string `yaml:"action"`
+		Priority  int    `yaml:"priority"`
+	} `yaml:"rules"`
+}
+
+// Env represents the environment passed to the expression evaluator.
+type Env struct {
+	Heartrate    float64
+	MentalEnergy float64
+	EnergyFactor float64
+
+	ModelAttention  float64
+	NegativeEmotion float64
+	PositiveEmotion float64
+	UserAttention   float64
+
+	IdleDurationSecs float64
+	IdleDurationMins float64
+	UserReplyRatio   float64
+
+	HasUnconsolidatedMessages  bool
+	CurrentSleepMode           int
+	TimeSinceConsolidationMins float64
+	TimeSinceReflectionMins    float64
+	TimeSinceProactiveMins     float64
+	TimeSinceIntrospectionMins float64
+
+	SYSTEM_CONSOLIDATION_FREQ_MINS float64
+	SYSTEM_TEMP_SLEEP_CYCLE_MINS   float64
+}
+
+func (e *DefaultRuleEngine) initRules() {
+	if len(e.compiledRules) > 0 {
+		return // Already initialized
+	}
+
+	var config RuleConfig
+	if err := yaml.Unmarshal(defaultRulesYAML, &config); err != nil {
+		panic(fmt.Sprintf("failed to parse default_ruleengine.yaml: %v", err))
+	}
+
+	for _, mod := range config.HRModifiers {
+		cond, err := expr.Compile(mod.Condition, expr.Env(Env{}), expr.AsBool())
+		if err != nil {
+			panic(fmt.Sprintf("failed to compile HR condition %q: %v", mod.Condition, err))
+		}
+		eff, err := expr.Compile(mod.Effect, expr.Env(Env{})) // effect is float
+		if err != nil {
+			panic(fmt.Sprintf("failed to compile HR effect %q: %v", mod.Effect, err))
+		}
+		e.compiledModifiers = append(e.compiledModifiers, CompiledModifier{
+			Condition: cond,
+			Effect:    eff,
+		})
+	}
+
+	for _, r := range config.Rules {
+		cond, err := expr.Compile(r.Condition, expr.Env(Env{}), expr.AsBool())
+		if err != nil {
+			panic(fmt.Sprintf("failed to compile rule condition %q: %v", r.Condition, err))
+		}
+		e.compiledRules = append(e.compiledRules, CompiledRule{
+			Name:      r.Name,
+			Condition: cond,
+			Action:    EventType(r.Action),
+			Priority:  r.Priority,
+		})
+	}
+}
+
+// UpdateHeartrate is called every tick.
+func (e *DefaultRuleEngine) UpdateHeartrate(mindState string) {
 	// Base decay: 1% decay towards resting rate (70 BPM) per tick
 	restingRate := 70.0
 	diff := e.Heartrate - restingRate
-	e.Heartrate -= diff * 0.01 // Decay 1% of the difference
+	e.Heartrate -= diff * 0.01
 
-	// Parse Mindstate (MA:NE:PE:UA)
-	var ma, ne, pe, ua float64
-	parts := strings.Split(mindState, ":")
-	if len(parts) == 4 {
-		ma, _ = strconv.ParseFloat(parts[0], 64)
-		ne, _ = strconv.ParseFloat(parts[1], 64)
-		pe, _ = strconv.ParseFloat(parts[2], 64)
-		ua, _ = strconv.ParseFloat(parts[3], 64)
-	}
+	env := e.buildEnv(mindState, false)
 
-	energyFactor := e.MentalEnergy / 100.0
-	if energyFactor < 0.1 {
-		energyFactor = 0.1 // Allow a tiny bit of responsiveness even when exhausted
-	}
-
-	// Rule: Spike HR if Model Attention or User Attention is high
-	if ma > 0.8 || ua > 0.8 {
-		e.Heartrate += (2.0 * energyFactor)
-	}
-
-	// Rule: Spike HR for strong emotional conversations
-	if ne > 0.7 || pe > 0.7 {
-		e.Heartrate += (3.0 * energyFactor)
-	}
-
-	// Rule: Decrease HR if conversation is emotionally neutral and attention is low
-	if ne < 0.2 && pe < 0.2 && ma < 0.4 && ua < 0.4 {
-		e.Heartrate -= 1.0
-	}
-
-	// Rule: Time-based spikes
-	// If the user suddenly replied much faster or slower than their moving average.
-	// This is evaluated elsewhere when a message actually arrives (in OnUserMessage).
-	// But long idle periods should slowly drop HR.
-	idleDuration := time.Since(e.LastUserMessage)
-	if idleDuration > 2*time.Minute {
-		e.Heartrate -= 0.5 // Extra decay for inactivity
+	for _, mod := range e.compiledModifiers {
+		res, err := expr.Run(mod.Condition.(*vm.Program), env)
+		if err == nil && res.(bool) {
+			effRes, err := expr.Run(mod.Effect.(*vm.Program), env)
+			if err == nil {
+				if val, ok := effRes.(float64); ok {
+					e.Heartrate += val
+				}
+			}
+		}
 	}
 
 	// Clamp bounds
@@ -63,7 +124,6 @@ func (e *RuleEngine) UpdateHeartrate(mindState string) {
 	}
 
 	// Mental Energy regen: if HR is at or near resting (≤ 72), recover 10 energy per tick.
-	// This simulates Lyra "recovering" during calm periods.
 	restingThreshold := 72.0
 	if e.Heartrate <= restingThreshold {
 		e.MentalEnergy += 10.0
@@ -73,144 +133,144 @@ func (e *RuleEngine) UpdateHeartrate(mindState string) {
 	}
 }
 
-// OnUserMessage updates moving average delay and applies immediate HR spikes.
-func (e *RuleEngine) OnUserMessage(mindState string) {
+func (e *DefaultRuleEngine) OnUserMessage(mindState string) {
 	now := time.Now()
 	delay := now.Sub(e.LastAssistantMessage)
-	
-	// If first message or very long gap, don't heavily skew average, just use 10s baseline
 	if delay > 5*time.Minute {
 		delay = 10 * time.Second
 	}
 
-	// Moving average calculation (alpha = 0.2)
 	e.MovingAverageUserDelay = time.Duration(float64(e.MovingAverageUserDelay)*0.8 + float64(delay)*0.2)
 	e.LastUserMessage = now
 
-	// Compare current delay against average
 	ratio := float64(delay) / float64(e.MovingAverageUserDelay)
 	
-	// Rule: User replied much faster (ratio < 0.3) or much slower (ratio > 3.0) than usual
-	if ratio < 0.3 {
-		e.Heartrate += 5.0
-	} else if ratio > 3.0 {
-		e.Heartrate += 5.0
+	// HR spikes based on reply ratio handled via rules now
+	env := e.buildEnv(mindState, false)
+	env.UserReplyRatio = ratio
+	
+	for _, mod := range e.compiledModifiers {
+		res, err := expr.Run(mod.Condition.(*vm.Program), env)
+		if err == nil && res.(bool) {
+			effRes, err := expr.Run(mod.Effect.(*vm.Program), env)
+			if err == nil {
+				if val, ok := effRes.(float64); ok {
+					e.Heartrate += val
+				}
+			}
+		}
 	}
 }
 
-// EvaluateState checks all rules and determines if an event should be emitted.
-// Returns the highest priority EventType.
-func (e *RuleEngine) EvaluateState(mindState string, hasUnconsolidatedMessages bool) EventType {
-	now := time.Now()
-
-	// Parse Mindstate
-	var ma float64
+func (e *DefaultRuleEngine) buildEnv(mindState string, hasUnconsolidatedMessages bool) Env {
+	var ma, ne, pe, ua float64
 	parts := strings.Split(mindState, ":")
-	if len(parts) == 4 {
+	if len(parts) >= 4 {
 		ma, _ = strconv.ParseFloat(parts[0], 64)
+		ne, _ = strconv.ParseFloat(parts[1], 64)
+		pe, _ = strconv.ParseFloat(parts[2], 64)
+		ua, _ = strconv.ParseFloat(parts[3], 64)
 	}
 
-	// 1. Consolidation (Timer driven, default 1 minute)
-	freqMins := 1
+	energyFactor := e.MentalEnergy / 100.0
+	if energyFactor < 0.1 {
+		energyFactor = 0.1
+	}
+
+	now := time.Now()
+	idleDuration := now.Sub(e.LastUserMessage)
+
+	freqMins := 1.0
 	if val := os.Getenv("SYSTEM_CONSOLIDATION_FREQ_MINS"); val != "" {
-		if m, err := strconv.Atoi(val); err == nil && m > 0 {
+		if m, err := strconv.ParseFloat(val, 64); err == nil && m > 0 {
 			freqMins = m
 		}
 	}
-	if hasUnconsolidatedMessages && now.Sub(e.LastConsolidation) >= time.Duration(freqMins)*time.Minute {
-		return EventConsolidate
+	
+	tempSleepCycleMins := 60.0
+	if val := os.Getenv("SYSTEM_TEMP_SLEEP_CYCLE_MINS"); val != "" {
+		if m, err := strconv.ParseFloat(val, 64); err == nil && m > 0 {
+			tempSleepCycleMins = m
+		}
 	}
 
-	// Time since last user activity
-	idleDuration := now.Sub(e.LastUserMessage)
+	return Env{
+		Heartrate:    e.Heartrate,
+		MentalEnergy: e.MentalEnergy,
+		EnergyFactor: energyFactor,
 
-	// ── SLEEP STATE MACHINE ──────────────────────────────────────────
-	if idleDuration >= 3*time.Hour {
-		if e.CurrentSleepMode != 2 {
+		ModelAttention:  ma,
+		NegativeEmotion: ne,
+		PositiveEmotion: pe,
+		UserAttention:   ua,
+
+		IdleDurationSecs: idleDuration.Seconds(),
+		IdleDurationMins: idleDuration.Minutes(),
+		UserReplyRatio:   1.0, // overridden in OnUserMessage if needed
+
+		HasUnconsolidatedMessages:  hasUnconsolidatedMessages,
+		CurrentSleepMode:           e.CurrentSleepMode,
+		TimeSinceConsolidationMins: now.Sub(e.LastConsolidation).Minutes(),
+		TimeSinceReflectionMins:    now.Sub(e.LastReflection).Minutes(),
+		TimeSinceProactiveMins:     now.Sub(e.LastProactiveMessage).Minutes(),
+		TimeSinceIntrospectionMins: now.Sub(e.LastIntrospection).Minutes(),
+
+		SYSTEM_CONSOLIDATION_FREQ_MINS: freqMins,
+		SYSTEM_TEMP_SLEEP_CYCLE_MINS:   tempSleepCycleMins,
+	}
+}
+
+func (e *DefaultRuleEngine) EvaluateState(mindState string, hasUnconsolidatedMessages bool) EventType {
+	env := e.buildEnv(mindState, hasUnconsolidatedMessages)
+
+	var highestPriorityRule *CompiledRule
+	
+	for i, r := range e.compiledRules {
+		res, err := expr.Run(r.Condition.(*vm.Program), env)
+		if err == nil && res.(bool) {
+			if highestPriorityRule == nil || r.Priority > highestPriorityRule.Priority {
+				highestPriorityRule = &e.compiledRules[i]
+			}
+		}
+	}
+
+	if highestPriorityRule != nil {
+		if highestPriorityRule.Action == EventEnterTrueSleep {
 			e.CurrentSleepMode = 2
-			return EventEnterTrueSleep
-		}
-	} else if idleDuration >= 5*time.Minute {
-		if e.CurrentSleepMode != 1 {
+		} else if highestPriorityRule.Action == EventEnterTempSleep {
 			e.CurrentSleepMode = 1
-			return EventEnterTempSleep
 		}
-	} else {
-		e.CurrentSleepMode = 0 // Awake
-	}
-
-	// State 2: True Sleep (Hibernation) - Zero background tasks
-	if e.CurrentSleepMode == 2 {
-		return EventNothing
-	}
-
-	// State 1: Temp Sleep - Throttled tasks
-	if e.CurrentSleepMode == 1 {
-		// Allow one final consolidation to clean up memory
-		if hasUnconsolidatedMessages {
-			return EventConsolidate
-		}
-
-		// Throttled Introspection/Reflection
-		tempSleepCycleMins := 60
-		if val := os.Getenv("SYSTEM_TEMP_SLEEP_CYCLE_MINS"); val != "" {
-			if m, err := strconv.Atoi(val); err == nil && m > 0 {
-				tempSleepCycleMins = m
+		if highestPriorityRule.Action == EventNothing && e.CurrentSleepMode > 0 {
+			if env.IdleDurationMins < 5 {
+				e.CurrentSleepMode = 0
 			}
 		}
-		if now.Sub(e.LastIntrospection) >= time.Duration(tempSleepCycleMins)*time.Minute {
-			return EventIntrospect
-		}
-		
-		return EventNothing
+		return highestPriorityRule.Action
 	}
-	// ─────────────────────────────────────────────────────────────────
-
-	// 2. Proactive Messaging
-	// Rule: HR is high, MA is high, user inactive for 30s, and we haven't proactived recently (cooldown 1 min)
-	if e.Heartrate > 90.0 && ma > 0.7 && idleDuration >= 30*time.Second {
-		if e.MentalEnergy > 5.0 { // Must have energy to be proactive
-			if now.Sub(e.LastProactiveMessage) >= 1*time.Minute {
-				return EventProactiveMessage
-			}
-		}
-	}
-
-	// 3. Reflection
-	// Rule: High engagement but user inactive for 15s. (Cooldown 2 mins)
-	if (e.Heartrate > 100.0 || ma > 0.8) && idleDuration >= 15*time.Second {
-		if now.Sub(e.LastReflection) >= 2*time.Minute {
-			return EventReflect
-		}
-	}
-
-	// 4. Introspection
-	// Rule: HR has declined to resting (< 75), user inactive for long time (2 mins). (Cooldown 5 mins)
-	if e.Heartrate < 75.0 && idleDuration >= 2*time.Minute {
-		if now.Sub(e.LastIntrospection) >= 5*time.Minute {
-			return EventIntrospect
-		}
+	
+	// Default wake state recovery if idle time falls
+	if env.IdleDurationMins < 5 {
+		e.CurrentSleepMode = 0
 	}
 
 	return EventNothing
 }
 
-// AcknowledgeEvent updates the timestamp for when an event was successfully fired and consumes mental energy.
-func (e *RuleEngine) AcknowledgeEvent(evt EventType) {
+func (e *DefaultRuleEngine) AcknowledgeEvent(evt EventType) {
 	now := time.Now()
 	switch evt {
 	case EventConsolidate:
 		e.LastConsolidation = now
-		e.ConsumeEnergy(5.0) // Consolidating takes a little energy
+		e.ConsumeEnergy(5.0)
 	case EventReflect:
 		e.LastReflection = now
-		e.ConsumeEnergy(15.0) // Reflection takes more cognitive effort
+		e.ConsumeEnergy(15.0)
 	case EventProactiveMessage:
 		e.LastProactiveMessage = now
 		e.LastAssistantMessage = now
-		e.ConsumeEnergy(10.0) // Same cost as a normal response
+		e.ConsumeEnergy(10.0)
 	case EventIntrospect:
 		e.LastIntrospection = now
-		e.ConsumeEnergy(20.0) // Deep introspection takes the most energy
+		e.ConsumeEnergy(20.0)
 	}
 }

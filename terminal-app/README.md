@@ -194,12 +194,20 @@ Packages a GGUF model directly inside the executable using Go's `//go:embed` dir
 
 ## Escalator Module (Autonomy & Proactive Messaging)
 
-The **Escalator Module** turns the Persona into a proactive participant. Driven by an offline, deterministic Rule Engine and a background Scheduler:
+The **Escalator Module** turns the Persona into a proactive participant. Driven by a deterministic Rule Engine and a background Scheduler:
 
-*   **Heartrate & Decay:** The engine maintains a runtime `Heartrate` (BPM) that naturally decays toward resting levels over time, but spikes dynamically during intense emotional conversations.
-*   **Background Scheduler:** A concurrent 5-second ticker evaluates the conversation state against the Rule Engine and emits background events.
-*   **Proactive Messaging:** If the user is silent for an extended period while the engine's attention and heartrate are elevated, it triggers a `PROACTIVE_MESSAGE` event. The engine temporarily locks the user's terminal input and gracefully initiates conversation using a dedicated prompt designed for proactive engagement.
-*   **Offline Event Scheduling:** The Escalator also assumes responsibility for automatically triggering the Reflector and Summariser (`CONSOLIDATE`, `REFLECT`, `INTROSPECT`) entirely in the background when pacing allows.
+*   **Customizable Rules (`default_ruleengine.yaml`)**: The Rule Engine uses `expr` to evaluate rules dynamically. It is embedded into the binary at build time. You can modify this YAML file before building to define exact logic for heart rate spikes and background events.
+*   **Properties & Variables**: The Rule Engine evaluates rules against a live `Env` struct containing:
+    *   `Heartrate` (float): Tracks cognitive load and excitement. Natural resting rate is 70 BPM. Spikes during high-attention or emotional exchanges.
+    *   `MentalEnergy` (float): Ranges from 0–100. Doing heavy tasks (responding, reflecting) costs energy. It naturally regenerates during idle time when the Heartrate returns to resting levels.
+    *   `EnergyFactor` (float): `MentalEnergy / 100`, used to scale heartrate spikes (a tired bot gets less excited).
+    *   `IdleDurationMins` & `IdleDurationSecs`: Time since the user last sent a message.
+    *   `ModelAttention`, `UserAttention`, `PositiveEmotion`, `NegativeEmotion`: The latest mindstate values parsed directly from the Reactor module.
+*   **Background Scheduler**: A concurrent ticker evaluates the state against the Rule Engine and emits events (e.g., `PROACTIVE_MESSAGE`, `REFLECT`, `CONSOLIDATE`, `INTROSPECT`).
+*   **Environment Modifiers**: The engine respects variables that tweak background rules:
+    *   `SYSTEM_CONSOLIDATION_FREQ_MINS` (default: 1): How often unstored messages are grouped into an episode.
+    *   `SYSTEM_TEMP_SLEEP_CYCLE_MINS` (default: 60): How often the bot introspects during "Temp Sleep" (when the user has been away for > 5 mins).
+*   **Proactive Messaging**: If the user is silent while the bot has high energy, high attention, and high heartrate, it triggers a proactive text message.
 
 ---
 

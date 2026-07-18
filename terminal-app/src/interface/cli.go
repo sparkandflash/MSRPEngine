@@ -198,7 +198,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 		func() string { return mindState },
 		func() bool { return hasUnconsolidated },
 	)
-	sched.Engine.MentalEnergy = savedMentalEnergy // Restore mental energy from CSV
+	sched.Engine.SetMentalEnergy(savedMentalEnergy) // Restore mental energy from CSV
 	go sched.Run(context.Background())
 
 	// Initialize Readline
@@ -237,7 +237,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 		// If we receive a kill signal, save state and exit directly
 		sysMsg := "session ended abruptly"
 		historyMgr.Save("system", sysMsg, mindState)
-		updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.MentalEnergy)
+		updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.GetMentalEnergy())
 		os.Exit(0)
 	}()
 	
@@ -343,7 +343,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			}
 
 			if input == ">>debug" {
-				fmt.Fprintf(rl.Stdout(), "system: mindstate: %s | HR: %.1f | energy: %.0f/100\n", mindState, sched.Engine.Heartrate, sched.Engine.MentalEnergy)
+				fmt.Fprintf(rl.Stdout(), "system: mindstate: %s | HR: %.1f | energy: %.0f/100\n", mindState, sched.Engine.GetHeartrate(), sched.Engine.GetMentalEnergy())
 				fmt.Fprintf(rl.Stdout(), "system: active episodes: %d | pinned: %q\n", len(episodeMgr.GetActive()), episodeMgr.GetPinnedID())
 				continue
 			} else if strings.HasPrefix(input, ">>mindstate ") {
@@ -405,12 +405,12 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			} else if input == ">>exit" {
 				sysMsg := "session has ended"
 				_ = historyMgr.Save("system", sysMsg, mindState)
-				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.MentalEnergy)
+				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.GetMentalEnergy())
 				return
 			} else if input == ">>sigint" || input == ">>eof" {
 				sysMsg := "session ended abruptly"
 				_ = historyMgr.Save("system", sysMsg, mindState)
-				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.MentalEnergy)
+				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.GetMentalEnergy())
 				fmt.Fprintf(rl.Stdout(), "\033[31m> session terminated abruptly.\033[0m\n")
 				return
 			}
@@ -479,7 +479,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 
 			// Respond using responder's clean STM (no stored flags) + active episodes
 			// Pass mental energy as a length hint appended to the mindstate string.
-			energyHint := fmt.Sprintf("%s|energy:%.0f", mindState, sched.Engine.MentalEnergy)
+			energyHint := fmt.Sprintf("%s|energy:%.0f", mindState, sched.Engine.GetMentalEnergy())
 			reply, usefulEpisodeID, err := resp.Respond(ctx, input, energyHint, responderSTM.GetNoFlags(), episodes)
 			if err != nil {
 				done <- true

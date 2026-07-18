@@ -1,0 +1,72 @@
+hr_modifiers:
+  # Base condition spikes
+  - condition: "ModelAttention > 0.8 || UserAttention > 0.8"
+    effect: "2.0 * EnergyFactor"
+  - condition: "NegativeEmotion > 0.7 || PositiveEmotion > 0.7"
+    effect: "3.0 * EnergyFactor"
+  - condition: "NegativeEmotion < 0.2 && PositiveEmotion < 0.2 && ModelAttention < 0.4 && UserAttention < 0.4"
+    effect: "-1.0"
+  - condition: "IdleDurationMins > 2.0"
+    effect: "-0.5"
+
+  # Reply speed logic (compared to average)
+  - condition: "UserReplyRatio > 0.0 && UserReplyRatio < 0.3" # Much faster than usual
+    effect: "5.0"
+  - condition: "UserReplyRatio > 3.0" # Much slower than usual
+    effect: "5.0"
+
+rules:
+  # -- Sleep State Machine --
+  - name: "EnterTrueSleep"
+    condition: "IdleDurationMins >= 180 && CurrentSleepMode != 2"
+    action: "ENTER_TRUE_SLEEP"
+    priority: 10
+
+  - name: "EnterTempSleep"
+    condition: "IdleDurationMins >= 5 && CurrentSleepMode != 1 && CurrentSleepMode != 2"
+    action: "ENTER_TEMP_SLEEP"
+    priority: 9
+
+  - name: "TrueSleepIdle"
+    condition: "CurrentSleepMode == 2"
+    action: "NOTHING"
+    priority: 8
+
+  - name: "TempSleepConsolidate"
+    condition: "CurrentSleepMode == 1 && HasUnconsolidatedMessages"
+    action: "CONSOLIDATE"
+    priority: 7
+
+  - name: "TempSleepIntrospect"
+    condition: "CurrentSleepMode == 1 && TimeSinceIntrospectionMins >= SYSTEM_TEMP_SLEEP_CYCLE_MINS"
+    action: "INTROSPECT"
+    priority: 6
+
+  - name: "TempSleepIdle"
+    condition: "CurrentSleepMode == 1"
+    action: "NOTHING"
+    priority: 5
+
+  # -- Active Background Tasks --
+  - name: "Consolidate"
+    condition: "HasUnconsolidatedMessages && TimeSinceConsolidationMins >= SYSTEM_CONSOLIDATION_FREQ_MINS"
+    action: "CONSOLIDATE"
+    priority: 4
+
+  - name: "ProactiveMessage"
+    # HR is high, model is paying attention, user idle for 30s, and sufficient energy. Cooldown: 1 min
+    condition: "Heartrate > 90.0 && ModelAttention > 0.7 && IdleDurationSecs >= 30 && MentalEnergy > 5.0 && TimeSinceProactiveMins >= 1.0"
+    action: "PROACTIVE_MESSAGE"
+    priority: 3
+
+  - name: "Reflect"
+    # High engagement (HR > 100 or MA > 0.8), user idle for 15s. Cooldown: 2 mins
+    condition: "(Heartrate > 100.0 || ModelAttention > 0.8) && IdleDurationSecs >= 15 && TimeSinceReflectionMins >= 2.0"
+    action: "REFLECT"
+    priority: 2
+
+  - name: "Introspect"
+    # HR cooled down to resting (< 75), user idle for 2 mins. Cooldown: 5 mins
+    condition: "Heartrate < 75.0 && IdleDurationMins >= 2.0 && TimeSinceIntrospectionMins >= 5.0"
+    action: "INTROSPECT"
+    priority: 1

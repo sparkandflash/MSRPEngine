@@ -11,7 +11,7 @@ import (
 
 // Scheduler runs the rule engine on a ticker and emits events.
 type Scheduler struct {
-	Engine    *RuleEngine
+	Engine    RuleEngine
 	EventChan chan EventType
 	GetMindState func() string
 	HasUnconsolidated func() bool
