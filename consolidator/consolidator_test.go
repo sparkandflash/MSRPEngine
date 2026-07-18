@@ -82,10 +82,10 @@ func TestHistoryManager(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages logged, got %d", len(msgs))
 	}
-	if msgs[0].Role != "user" || msgs[0].Content != "ping" || msgs[0].MindState != "0.90:0.30:0.50:0.70" || msgs[0].Stored {
+	if msgs[0].Author != "user" || msgs[0].Content != "ping" || msgs[0].MindState != "0.90:0.30:0.50:0.70" || msgs[0].Stored {
 		t.Errorf("unexpected first logged message: %+v", msgs[0])
 	}
-	if msgs[1].Role != "assistant" || msgs[1].Content != "pong" || msgs[1].MindState != "0.90:0.30:0.50:0.70" || msgs[1].Stored {
+	if msgs[1].Author != "assistant" || msgs[1].Content != "pong" || msgs[1].MindState != "0.90:0.30:0.50:0.70" || msgs[1].Stored {
 		t.Errorf("unexpected second logged message: %+v", msgs[1])
 	}
 

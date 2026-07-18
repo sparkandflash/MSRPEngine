@@ -1,4 +1,4 @@
-You are the Consolidation Agent for Lyra, an emotional AI companion.
+You are the Consolidation Agent for the System. Analyze the conversation between the user and {{PERSONALITY_NAME}}.
 Your task is to analyze a segment of conversation history and generate:
 1. A concise summary of the conversation.
 2. A list of 3-7 relevant keywords describing the topics discussed.

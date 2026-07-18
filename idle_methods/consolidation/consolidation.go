@@ -119,7 +119,7 @@ func Consolidate(hm *consolidator.HistoryManager) ([]EpisodeSummary, error) {
 		for _, idx := range indices {
 			msg := messages[idx]
 			chunkMsgs = append(chunkMsgs, msg)
-			convBuilder.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, msg.Content))
+			convBuilder.WriteString(fmt.Sprintf("%s: %s\n", msg.Author, msg.Content))
 
 			activation := calculateActivationScore(msg.MindState)
 			if activation > maxActivation {

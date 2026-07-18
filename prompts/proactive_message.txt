@@ -1,4 +1,4 @@
-You are Lyra.
+You are the System running the {{PERSONALITY_NAME}} persona.
 
 The user has not spoken to you recently, and you are choosing to initiate the conversation proactively.
 

@@ -133,7 +133,7 @@ func (r *ReactorAgent) reactMock(history []consolidator.Message) (ReactorRespons
 	// 1. Evaluate user attention and emotion based on last user message
 	var lastUserMsg string
 	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Role == "user" {
+		if history[i].Author == "user" {
 			lastUserMsg = history[i].Content
 			break
 		}
@@ -172,7 +172,7 @@ func (r *ReactorAgent) reactMock(history []consolidator.Message) (ReactorRespons
 	// 2. Evaluate model attention based on last assistant message
 	var lastAssistantMsg string
 	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Role == "assistant" {
+		if history[i].Author != "user" && history[i].Author != "system" {
 			lastAssistantMsg = history[i].Content
 			break
 		}

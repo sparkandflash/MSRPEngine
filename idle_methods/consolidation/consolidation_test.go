@@ -62,7 +62,7 @@ func TestConsolidationFlow(t *testing.T) {
 	}
 
 	// 1. Verify JSON Episode File was created
-	episodePath := filepath.Join("Context", "episodes", hm.SessionID+"_ep_1.json")
+	episodePath := filepath.Join("Context", "episodes", newEpisodes[0].ID+".json")
 	if _, err := os.Stat(episodePath); os.IsNotExist(err) {
 		t.Fatalf("expected episode file to be created at: %s", episodePath)
 	}

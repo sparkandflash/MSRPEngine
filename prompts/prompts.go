@@ -3,6 +3,7 @@ package prompts
 import (
 	_ "embed"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -18,27 +19,37 @@ var rawPersonalityPrompt string
 //go:embed consolidation.txt
 var rawConsolidationPrompt string
 
+func injectPersonalityName(prompt string) string {
+	name := os.Getenv("LYRA_PERSONALITY_NAME")
+	if name == "" {
+		name = "Lyra"
+	}
+	return strings.ReplaceAll(prompt, "{{PERSONALITY_NAME}}", name)
+}
+
 // GetResponderPrompt returns the responder prompt combined with the personality prompt if defined.
 func GetResponderPrompt() string {
 	pers := strings.TrimSpace(rawPersonalityPrompt)
+	base := injectPersonalityName(strings.TrimSpace(rawResponderPrompt))
 	if pers == "" {
-		return strings.TrimSpace(rawResponderPrompt)
+		return base
 	}
-	return fmt.Sprintf("%s\n\nPersonality guidelines:\n%s", strings.TrimSpace(rawResponderPrompt), pers)
+	return fmt.Sprintf("%s\n\nPersonality guidelines:\n%s", base, pers)
 }
 
 // GetReactorPrompt returns the reactor prompt combined with the personality prompt if defined.
 func GetReactorPrompt() string {
 	pers := strings.TrimSpace(rawPersonalityPrompt)
+	base := injectPersonalityName(strings.TrimSpace(rawReactorPrompt))
 	if pers == "" {
-		return strings.TrimSpace(rawReactorPrompt)
+		return base
 	}
-	return fmt.Sprintf("%s\n\nPersonality guidelines:\n%s", strings.TrimSpace(rawReactorPrompt), pers)
+	return fmt.Sprintf("%s\n\nPersonality guidelines:\n%s", base, pers)
 }
 
 // GetConsolidationPrompt returns the consolidation base prompt.
 func GetConsolidationPrompt() string {
-	return strings.TrimSpace(rawConsolidationPrompt)
+	return injectPersonalityName(strings.TrimSpace(rawConsolidationPrompt))
 }
 
 //go:embed introspection.txt
@@ -46,7 +57,7 @@ var rawIntrospectionPrompt string
 
 // GetIntrospectionPrompt returns the introspection base prompt.
 func GetIntrospectionPrompt() string {
-	return strings.TrimSpace(rawIntrospectionPrompt)
+	return injectPersonalityName(strings.TrimSpace(rawIntrospectionPrompt))
 }
 
 //go:embed proactive_message.txt
@@ -55,8 +66,9 @@ var rawProactivePrompt string
 // GetProactivePrompt returns the proactive message prompt combined with the personality prompt if defined.
 func GetProactivePrompt() string {
 	pers := strings.TrimSpace(rawPersonalityPrompt)
+	base := injectPersonalityName(strings.TrimSpace(rawProactivePrompt))
 	if pers == "" {
-		return strings.TrimSpace(rawProactivePrompt)
+		return base
 	}
-	return fmt.Sprintf("%s\n\nPersonality guidelines:\n%s", strings.TrimSpace(rawProactivePrompt), pers)
+	return fmt.Sprintf("%s\n\nPersonality guidelines:\n%s", base, pers)
 }

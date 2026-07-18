@@ -28,7 +28,7 @@ While chatting with Lyra, you can use these special commands:
 *   `>>consolidate`: Triggers the Summariser agent to chunk unsaved history into episodic memories.
 *   `>>reflect`: Dynamically loads past episodes with high attention scores and shared keywords into active memory.
 *   `>>introspect <episode_id>`: Offline analysis of a specific episode to generate alternative response strategies.
-*   `exit` or `quit`: Terminates the interactive session cleanly.
+*   `>>exit`: Terminates the interactive session cleanly and saves your session to the CSV ledger.
 
 *Note: All `>>` commands are intercepted by the system immediately. They bypass heartrate updates, short-term memory (STM), and do not appear in the long-term history logs.*
 

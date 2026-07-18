@@ -83,7 +83,7 @@ func TestMockResponder(t *testing.T) {
 	}
 	r := NewMockResponder(config)
 	history := []consolidator.Message{
-		{Role: "user", Content: "prev"},
+		{Author: "user", Content: "prev"},
 	}
 	res, _, err := r.Respond(context.Background(), "hello", "0.90:0.30:0.50:0.70", history, nil)
 	if err != nil {

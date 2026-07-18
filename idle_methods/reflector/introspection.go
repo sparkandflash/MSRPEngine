@@ -38,7 +38,7 @@ func Introspect(episodeID string) error {
 	// 2. Format messages for the summariser
 	var convBuilder strings.Builder
 	for _, msg := range episode.Messages {
-		convBuilder.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, msg.Content))
+		convBuilder.WriteString(fmt.Sprintf("%s: %s\n", msg.Author, msg.Content))
 	}
 
 	// 3. Call SummariserAgent with the Introspection Prompt

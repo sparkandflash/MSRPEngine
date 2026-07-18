@@ -2,10 +2,13 @@ package cli
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
 	"math/rand"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/chzyer/readline"
@@ -18,6 +21,50 @@ import (
 	"lyra/reactor"
 	"lyra/responder"
 )
+
+func updateSessionCSV(sessionID, mindState string, mentalEnergy float64) {
+	csvPath := "Context/conversationHistory/sessions.csv"
+	var records [][]string
+	
+	file, err := os.Open(csvPath)
+	if err == nil {
+		reader := csv.NewReader(file)
+		records, _ = reader.ReadAll()
+		file.Close()
+	}
+
+	if len(records) == 0 {
+		records = append(records, []string{"session_id", "mind_state", "mental_energy", "last_active"})
+	}
+
+	updated := false
+	for i := 1; i < len(records); i++ {
+		if records[i][0] == sessionID {
+			records[i][1] = mindState
+			records[i][2] = fmt.Sprintf("%.2f", mentalEnergy)
+			records[i][3] = time.Now().Format(time.RFC3339)
+			updated = true
+			break
+		}
+	}
+
+	if !updated {
+		records = append(records, []string{
+			sessionID,
+			mindState,
+			fmt.Sprintf("%.2f", mentalEnergy),
+			time.Now().Format(time.RFC3339),
+		})
+	}
+
+	outFile, err := os.Create(csvPath)
+	if err == nil {
+		writer := csv.NewWriter(outFile)
+		writer.WriteAll(records)
+		writer.Flush()
+		outFile.Close()
+	}
+}
 
 // Run starts the interactive chat interface for Lyra.
 func Run(newSession bool, reuseSession string, debugMode bool) {
@@ -62,24 +109,43 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 	// ── Session Resolution ───────────────────────────────────────────────────
 	historyDir := "Context/conversationHistory"
 	os.MkdirAll(historyDir, 0755)
-	lastSessionPath := historyDir + "/last_session.txt"
+	
+	csvPath := historyDir + "/sessions.csv"
 	var sessionID string
 	var savedMindState string
+	var savedMentalEnergy float64 = 100.0
 
 	if newSession {
 		sessionID = "" // HistoryManager will generate a new one
 	} else if reuseSession != "" {
 		sessionID = reuseSession
+		// Try to read existing state from CSV
+		file, err := os.Open(csvPath)
+		if err == nil {
+			reader := csv.NewReader(file)
+			records, _ := reader.ReadAll()
+			for i := len(records) - 1; i >= 1; i-- {
+				if records[i][0] == sessionID {
+					savedMindState = records[i][1]
+					fmt.Sscanf(records[i][2], "%f", &savedMentalEnergy)
+					break
+				}
+			}
+			file.Close()
+		}
 	} else {
-		// Attempt to read the last session
-		if data, err := os.ReadFile(lastSessionPath); err == nil {
-			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-			if len(lines) > 0 {
-				sessionID = strings.TrimSpace(lines[0])
+		// Attempt to read the most recent session from CSV
+		file, err := os.Open(csvPath)
+		if err == nil {
+			reader := csv.NewReader(file)
+			records, _ := reader.ReadAll()
+			if len(records) > 1 {
+				lastRow := records[len(records)-1]
+				sessionID = lastRow[0]
+				savedMindState = lastRow[1]
+				fmt.Sscanf(lastRow[2], "%f", &savedMentalEnergy)
 			}
-			if len(lines) > 1 {
-				savedMindState = strings.TrimSpace(lines[1])
-			}
+			file.Close()
 		}
 	}
 
@@ -95,15 +161,15 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 		mindState = savedMindState
 	}
 
-	// Save the resolved session ID and mindstate back to last_session.txt
-	os.WriteFile(lastSessionPath, []byte(fmt.Sprintf("%s\n%s", historyMgr.SessionID, mindState)), 0644)
+	// Save the resolved session ID and mindstate back to the CSV ledger
+	updateSessionCSV(historyMgr.SessionID, mindState, savedMentalEnergy)
 
 	// Restore state if messages were loaded
 	loadedMessages := historyMgr.GetMessages()
 	if len(loadedMessages) > 0 {
 		for _, msg := range loadedMessages {
-			reactorSTM.Update(msg.Role, msg.Content)
-			responderSTM.Update(msg.Role, msg.Content)
+			reactorSTM.Update(msg.Author, msg.Content)
+			responderSTM.Update(msg.Author, msg.Content)
 		}
 		
 		// If mindState wasn't loaded from the file (e.g. --session used), fallback to last message
@@ -127,6 +193,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 		func() string { return mindState },
 		func() bool { return hasUnconsolidated },
 	)
+	sched.Engine.MentalEnergy = savedMentalEnergy // Restore mental energy from CSV
 	go sched.Run(context.Background())
 
 	// Initialize Readline
@@ -146,10 +213,27 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 		for {
 			line, err := rl.Readline()
 			if err != nil { // EOF or Ctrl+C
+				if err == readline.ErrInterrupt {
+					inputChan <- ">>sigint"
+				} else {
+					inputChan <- ">>eof"
+				}
 				break
 			}
 			inputChan <- strings.TrimSpace(line)
 		}
+	}()
+	
+	// Global OS Signal Listener for crashes/kills
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		// If we receive a kill signal, save state and exit directly
+		sysMsg := "session ended abruptly"
+		historyMgr.Save("system", sysMsg, mindState)
+		updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.MentalEnergy)
+		os.Exit(0)
 	}()
 	
 	for {
@@ -227,8 +311,15 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 					}
 					
 					_ = historyMgr.Save("assistant", reply, mindState)
+					personalityName := os.Getenv("LYRA_PERSONALITY_NAME")
+					if personalityName == "" {
+						personalityName = "lyra" // default fallback
+					}
+
+					// Background: Reactor update
+					// Save assistant's turn locally (Responder uses its own STM logic)
+					reactorSTM.Update(personalityName, reply)
 					responderSTM.Update("assistant", reply)
-					reactorSTM.Update("assistant", reply)
 					hasUnconsolidated = true
 
 					if respState, err := reactorAgent.React(ctx, reactorSTM.Get()); err == nil {
@@ -251,24 +342,24 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 			}
 
 			if input == ">>debug" {
-				fmt.Fprintf(rl.Stdout(), "debug: mindstate: %s | HR: %.1f | energy: %.0f/100\n", mindState, sched.Engine.Heartrate, sched.Engine.MentalEnergy)
-				fmt.Fprintf(rl.Stdout(), "debug: active episodes: %d | pinned: %q\n", len(episodeMgr.GetActive()), episodeMgr.GetPinnedID())
+				fmt.Fprintf(rl.Stdout(), "system: mindstate: %s | HR: %.1f | energy: %.0f/100\n", mindState, sched.Engine.Heartrate, sched.Engine.MentalEnergy)
+				fmt.Fprintf(rl.Stdout(), "system: active episodes: %d | pinned: %q\n", len(episodeMgr.GetActive()), episodeMgr.GetPinnedID())
 				continue
 			} else if strings.HasPrefix(input, ">>mindstate ") {
 				valStr := strings.TrimSpace(strings.TrimPrefix(input, ">>mindstate "))
 				var ma, ne, pe, ua float64
 				_, err := fmt.Sscanf(valStr, "%f:%f:%f:%f", &ma, &ne, &pe, &ua)
 				if err != nil || ma < 0.0 || ma > 1.0 || ne < 0.0 || ne > 1.0 || pe < 0.0 || pe > 1.0 || ua < 0.0 || ua > 1.0 {
-					fmt.Fprintln(rl.Stdout(), "debug: error: mindstate must be four floats (0.0 to 1.0) separated by colons (e.g. 0.9:0.3:0.5:0.7).")
+					fmt.Fprintln(rl.Stdout(), "system: error: mindstate must be four floats (0.0 to 1.0) separated by colons (e.g. 0.9:0.3:0.5:0.7).")
 				} else {
 					mindState = fmt.Sprintf("%.2f:%.2f:%.2f:%.2f", ma, ne, pe, ua)
-					fmt.Fprintf(rl.Stdout(), "debug: mindstate updated to %s.\n", mindState)
+					fmt.Fprintf(rl.Stdout(), "system: mindstate updated to %s.\n", mindState)
 				}
 				continue
 			} else if input == ">>consolidate" {
 				newEpisodes, err := consolidation.Consolidate(historyMgr)
 				if err != nil {
-					fmt.Fprintf(rl.Stdout(), "debug: error: consolidation failed: %v\n", err)
+					fmt.Fprintf(rl.Stdout(), "system: error: consolidation failed: %v\n", err)
 				} else {
 					for _, ep := range newEpisodes {
 						episodeMgr.Push(episode_memory.EpisodeSummary{
@@ -280,7 +371,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 						})
 					}
 					hasUnconsolidated = false
-					fmt.Fprintf(rl.Stdout(), "debug: consolidation completed successfully. %d episode(s) added.\n", len(newEpisodes))
+					fmt.Fprintf(rl.Stdout(), "system: consolidation completed successfully. %d episode(s) added.\n", len(newEpisodes))
 				}
 				continue
 			} else if input == ">>reflect" {
@@ -291,7 +382,7 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				}
 				matchedIDs, err := reflector.Reflect(mindState, episodes)
 				if err != nil {
-					fmt.Fprintf(rl.Stdout(), "debug: error: reflection failed: %v\n", err)
+					fmt.Fprintf(rl.Stdout(), "system: error: reflection failed: %v\n", err)
 				} else {
 					loaded := 0
 					for _, id := range matchedIDs {
@@ -299,21 +390,27 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 							loaded++
 						}
 					}
-					fmt.Fprintf(rl.Stdout(), "debug: reflection completed. Found %d matching episodes, loaded %d into active memory.\n", len(matchedIDs), loaded)
+					fmt.Fprintf(rl.Stdout(), "system: reflection completed. Found %d matching episodes, loaded %d into active memory.\n", len(matchedIDs), loaded)
 				}
 				continue
 			} else if strings.HasPrefix(input, ">>introspect ") {
 				episodeID := strings.TrimSpace(strings.TrimPrefix(input, ">>introspect "))
 				if err := reflector.Introspect(episodeID); err != nil {
-					fmt.Fprintf(rl.Stdout(), "debug: error: introspection failed: %v\n", err)
+					fmt.Fprintf(rl.Stdout(), "system: error: introspection failed: %v\n", err)
 				} else {
-					fmt.Fprintf(rl.Stdout(), "debug: introspection completed for %s. Reflection saved.\n", episodeID)
+					fmt.Fprintf(rl.Stdout(), "system: introspection completed for %s. Reflection saved.\n", episodeID)
 				}
 				continue
-			} else if input == "exit" || input == "quit" {
-				os.WriteFile(lastSessionPath, []byte(fmt.Sprintf("%s\n%s", historyMgr.SessionID, mindState)), 0644)
-				rl.Close()
-				fmt.Println("\033[34m> goodbye!\033[0m")
+			} else if input == ">>exit" {
+				sysMsg := "session has ended"
+				_ = historyMgr.Save("system", sysMsg, mindState)
+				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.MentalEnergy)
+				return
+			} else if input == ">>sigint" || input == ">>eof" {
+				sysMsg := "session ended abruptly"
+				_ = historyMgr.Save("system", sysMsg, mindState)
+				updateSessionCSV(historyMgr.SessionID, mindState, sched.Engine.MentalEnergy)
+				fmt.Fprintf(rl.Stdout(), "\033[31m> session terminated abruptly.\033[0m\n")
 				return
 			}
 
@@ -331,8 +428,6 @@ func Run(newSession bool, reuseSession string, debugMode bool) {
 				<-done
 			}()
 
-			// Save user message to long-term history
-			_ = historyMgr.Save("user", input, mindState)
 			// Update both STMs
 			reactorSTM.Update("user", input)
 			responderSTM.Update("user", input)

@@ -25,14 +25,19 @@ func (e *RuleEngine) UpdateHeartrate(mindState string) {
 		ua, _ = strconv.ParseFloat(parts[3], 64)
 	}
 
+	energyFactor := e.MentalEnergy / 100.0
+	if energyFactor < 0.1 {
+		energyFactor = 0.1 // Allow a tiny bit of responsiveness even when exhausted
+	}
+
 	// Rule: Spike HR if Model Attention or User Attention is high
 	if ma > 0.8 || ua > 0.8 {
-		e.Heartrate += 2.0
+		e.Heartrate += (2.0 * energyFactor)
 	}
 
 	// Rule: Spike HR for strong emotional conversations
 	if ne > 0.7 || pe > 0.7 {
-		e.Heartrate += 3.0
+		e.Heartrate += (3.0 * energyFactor)
 	}
 
 	// Rule: Decrease HR if conversation is emotionally neutral and attention is low
@@ -164,8 +169,10 @@ func (e *RuleEngine) EvaluateState(mindState string, hasUnconsolidatedMessages b
 	// 2. Proactive Messaging
 	// Rule: HR is high, MA is high, user inactive for 30s, and we haven't proactived recently (cooldown 1 min)
 	if e.Heartrate > 90.0 && ma > 0.7 && idleDuration >= 30*time.Second {
-		if now.Sub(e.LastProactiveMessage) >= 1*time.Minute {
-			return EventProactiveMessage
+		if e.MentalEnergy > 5.0 { // Must have energy to be proactive
+			if now.Sub(e.LastProactiveMessage) >= 1*time.Minute {
+				return EventProactiveMessage
+			}
 		}
 	}
 

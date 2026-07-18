@@ -50,7 +50,8 @@ func TestMockReactorEscalation(t *testing.T) {
 
 	// 1. Test positive input
 	historyPositive := []consolidator.Message{
-		{Role: "user", Content: "I am so excited and happy right now!"},
+		{Author: "user", Content: "I am so excited and happy right now!"},
+		{Author: "assistant", Content: "That is wonderful!"},
 	}
 	resp, err := agent.React(context.Background(), historyPositive)
 	if err != nil {
@@ -62,7 +63,8 @@ func TestMockReactorEscalation(t *testing.T) {
 
 	// 2. Test negative input
 	historyNegative := []consolidator.Message{
-		{Role: "user", Content: "I absolutely hate this and I am extremely angry and resentful!"},
+		{Author: "user", Content: "I absolutely despise this terrible situation and I hate it!"},
+		{Author: "assistant", Content: "I'm so sorry you feel that way."},
 	}
 	resp, err = agent.React(context.Background(), historyNegative)
 	if err != nil {
@@ -74,7 +76,7 @@ func TestMockReactorEscalation(t *testing.T) {
 
 	// 3. Test stable/default input
 	historyStable := []consolidator.Message{
-		{Role: "user", Content: "Standard text."},
+		{Author: "user", Content: "Standard text."},
 	}
 	resp, err = agent.React(context.Background(), historyStable)
 	if err != nil {
