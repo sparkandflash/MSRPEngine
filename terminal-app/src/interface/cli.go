@@ -335,7 +335,15 @@ func Run(newSession bool, reuseSession string, debugMode bool, noInterface bool)
 				responderSTM.Update("system", sysMsg)
 				reactorSTM.Update("system", sysMsg)
 
-				newEpisodes, err := consolidation.Consolidate(historyMgr)
+				var activeEps []consolidation.EpisodeSummary
+				for _, e := range episodeMgr.GetActive() {
+					activeEps = append(activeEps, consolidation.EpisodeSummary{
+						ID:            e.ID,
+						Facts:         e.Facts,
+						PeakMindState: e.PeakMindState,
+					})
+				}
+				newEpisodes, err := consolidation.Consolidate(historyMgr, activeEps)
 				if err == nil {
 					for _, ep := range newEpisodes {
 						episodeMgr.Push(episode_memory.EpisodeSummary{
@@ -513,7 +521,16 @@ func Run(newSession bool, reuseSession string, debugMode bool, noInterface bool)
 				}
 				continue
 			} else if input == ">>consolidate" {
-				newEpisodes, err := consolidation.Consolidate(historyMgr)
+				var activeEps []consolidation.EpisodeSummary
+				for _, e := range episodeMgr.GetActive() {
+					activeEps = append(activeEps, consolidation.EpisodeSummary{
+						ID:            e.ID,
+						Facts:         e.Facts,
+						PeakMindState: e.PeakMindState,
+					})
+				}
+				
+				newEpisodes, err := consolidation.Consolidate(historyMgr, activeEps)
 				if err != nil {
 					fmt.Fprintf(outWriter, "system: error: consolidation failed: %v\n", err)
 				} else {

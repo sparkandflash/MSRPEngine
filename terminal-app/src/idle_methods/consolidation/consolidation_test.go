@@ -53,7 +53,7 @@ func TestConsolidationFlow(t *testing.T) {
 	os.Setenv("SYSTEM_MAX_WORKING_MEMORY_CHARS", "100")
 	defer os.Unsetenv("SYSTEM_MAX_WORKING_MEMORY_CHARS")
 
-	newEpisodes, err := Consolidate(hm)
+	newEpisodes, err := Consolidate(hm, nil)
 	if err != nil {
 		t.Fatalf("consolidation failed: %v", err)
 	}
