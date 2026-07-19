@@ -10,3 +10,9 @@ terminal-app/build/
 # Local Embedding Sidecar and ML Models
 terminal-app/.bin/
 old-contexts
+
+# Python & Analysis Tools
+analysis/venv/
+analysis/__pycache__/
+analysis/*.png
+*.csv

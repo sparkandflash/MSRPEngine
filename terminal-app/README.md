@@ -1,6 +1,6 @@
 # MSRPEngine
 
-MSRPEngine (Mind-State Roleplay Engine) is a terminal-based interactive chatbot framework built in Go. It features a provider-agnostic responder agent harness, allowing you to connect it to local model runners, cloud-based LLM APIs, or even package models directly inside the executable.
+MSRPEngine (Mind State Reactive Personality Engine) is a terminal-based interactive chatbot framework built in Go. It features a provider-agnostic responder agent harness, allowing you to connect it to local model runners, cloud-based LLM APIs, or even package models directly inside the executable.
 
 MSRPEngine features a **dual-memory system** (Short-Term Memory + Episodic Long-Term Memory), a **Reactor Agent** for evaluating emotional state, and a **Summariser Agent** for consolidating memories.
 

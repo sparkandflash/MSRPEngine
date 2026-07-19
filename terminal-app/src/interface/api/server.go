@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ func StartServer(inputChan chan<- ChatInput, historyMgr *consolidator.HistoryMan
 	mux.HandleFunc("/", s.handleHealth)
 	mux.HandleFunc("/login", s.handleLogin)
 	mux.HandleFunc("/getMessages", s.authMiddleware(s.handleGetMessages))
+	mux.HandleFunc("/getMessageHistory", s.authMiddleware(s.handleGetMessageHistory))
 	mux.HandleFunc("/sendMessage", s.authMiddleware(s.handleSendMessage))
 
 	port := getEnv("PORT", "8080")
@@ -230,4 +232,52 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	case <-time.After(15 * time.Second):
 		http.Error(w, "Request timed out", http.StatusGatewayTimeout)
 	}
+}
+
+func (s *Server) handleGetMessageHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	allMsgs := s.HistoryMgr.GetMessages()
+	
+	offsetStr := r.URL.Query().Get("offset")
+	lengthStr := r.URL.Query().Get("length")
+	
+	offset := 0
+	length := len(allMsgs)
+	
+	if offsetStr != "" {
+		if val, err := strconv.Atoi(offsetStr); err == nil && val >= 0 {
+			offset = val
+		}
+	}
+	if lengthStr != "" {
+		if val, err := strconv.Atoi(lengthStr); err == nil && val > 0 {
+			length = val
+		}
+	}
+	
+	if offset > len(allMsgs) {
+		offset = len(allMsgs)
+	}
+	
+	end := offset + length
+	if end > len(allMsgs) {
+		end = len(allMsgs)
+	}
+	
+	var paginatedMsgs []consolidator.Message
+	if offset < end {
+		paginatedMsgs = allMsgs[offset:end]
+	} else {
+		paginatedMsgs = []consolidator.Message{}
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"messages": paginatedMsgs,
+		"total":    len(allMsgs),
+	})
 }
