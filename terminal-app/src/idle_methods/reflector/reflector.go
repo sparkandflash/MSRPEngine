@@ -104,7 +104,7 @@ func parseAttentionScore(mindState string) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	ua, err := strconv.ParseFloat(parts[3], 64)
+	ua, err := strconv.ParseFloat(parts[1], 64)
 	if err != nil {
 		return 0, err
 	}
