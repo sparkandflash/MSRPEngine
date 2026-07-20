@@ -29,6 +29,23 @@ If you want to create a brand new bot with a custom personality, you compile it 
 3. Your compiled binary will be waiting for you in the `build/` folder!
 4. You can now package this binary with its `.bin/` sidecar folder and an `.env` file to share it with others.
 
+### 3. How to Run as a Web Service (API Mode)
+If you want to integrate the bot into a web frontend instead of chatting via the terminal, you can boot the engine in "No Interface" mode.
+
+1. Ensure your `.env` has web credentials set (`WEB_USER`, `WEB_PASS`, `JWT_SECRET`, `PORT`).
+2. Run the binary with the no-interface flag:
+   ```bash
+   SYSTEM_NO_INTERFACE=true ./my_custom_bot
+   ```
+3. The terminal interface will be disabled and it will serve a REST API on the specified port.
+
+## Full Documentation
+
+**Detailed technical documentation for the API, Escalator Rule Engine, and Memory Architecture is hosted at:**
+🔗 [lyra.chalkboard.cc/docs](https://lyra.chalkboard.cc/docs)
+
+---
+
 ## Commands
 While chatting with your Persona, you can use these special commands:
 *   `>>debug`: Bypasses the LLM and prints system status (e.g., current mindstate and active episodes).
