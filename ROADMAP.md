@@ -54,7 +54,7 @@ An autonomous reasoning agent functioning during deep sleep/hibernation states.
 
 Moving beyond simple memory compression, the engine will act as a scientific observer, generating hypotheses about the world or the user and validating them against future reality. This harnesses the LLM's tendency to "hallucinate" by reframing it as **inference** and **imagination**.
 
-*   **Candidate Models (Hypotheses):** During idle periods or "dreams," the engine observes patterns in existing memories (e.g., "User likes backend," "User likes Go") and imagines a Candidate Model (e.g., "User values simplicity"). 
+*   **Candidate Models (Hypotheses):** Combined with the Inner Monologue idle method, this process doesn't run constantly. Instead, it triggers whenever a cluster of Episodes reaches a sufficient density of linking. The engine observes these linked patterns (e.g., "User likes backend," "User likes Go") and imagines a Candidate Model (e.g., "User values simplicity"). 
 *   **Confidence Tiers:**
     *   `Episode:` 100% observed reality (Immutable).
     *   `Confirmed Model:` 95% confidence (Validated patterns).
@@ -62,4 +62,4 @@ Moving beyond simple memory compression, the engine will act as a scientific obs
     *   *Note:* The Responder should never present Candidates as absolute truth, only as internal possibilities.
 *   **Validation Loop:** As new conversations occur, the engine tests its Candidate Models against new Episodes. If reality aligns, confidence increases until it becomes a Confirmed Model. 
 *   **The Golden Rule ("Reality Always Wins"):** Observed memories are immutable. Models summarize observations. Candidates predict reality. If a user explicitly contradicts a Candidate Model, it is instantly rejected and deleted. The engine cannot drift into delusion because reality has the final vote.
-*   **Pipeline:** `Observation → Hypothesis (Candidate) → Experiment (Future Chat) → Validation (Reject/Confirm)`
+*   **Pipeline:** `Interface History → Episodes → Episode Linking → Models → Model Candidates`
