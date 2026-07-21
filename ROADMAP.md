@@ -16,11 +16,12 @@ Now that the core MSRPEngine is cleanly decoupled and isolated in its own termin
 The memory system is the foundation. Everything else (personality, dreams) sits on top of it. If memory isn't solid, personality will be learning from unstable data.
 
 *   **Timeline:** Organizing episodes chronologically first, then by emotional scores.
-*   **Facts:** Retaining all information from conversations without excessive pre-filtering.
+*   **Facts:** Retaining all information from the interface history without excessive pre-filtering.
 *   **Linker:** An idle process that links facts with other facts based on new context. Instead of independent episodes, memories become a semantic graph.
 *   **Retriever:** An active process triggered during response generation. It finds the nearest fact, expands the neighborhood via linked episodes, and injects a richer context into the active window.
 *   **Wikipedia / External Search:** A basic tool allowing the responder to seek info outside its context.
-*   **Provenance / Origin Tracking:** Every fact must know its origin (e.g., Conversation, Wikipedia, Dream, Personality Inference). This allows the Retriever to distinguish between "I experienced this" and "I read this."
+*   **Provenance / Origin Tracking:** Every fact must know its origin (e.g., Interface History, Wikipedia, Dream, Personality Inference). This allows the Retriever to distinguish between "I experienced this" and "I read this."
+*   **Memory Scaling & Concurrency:** As the memory graph grows, the system will process memories in isolated "chunks" and rotate them. Idle methods (like linking and model creation) will run concurrently across different chunks. The architecture will also support spinning up multiple parallel `Responder + Context` instances.
 
 ---
 
@@ -54,12 +55,12 @@ An autonomous reasoning agent functioning during deep sleep/hibernation states.
 
 Moving beyond simple memory compression, the engine will act as a scientific observer, generating hypotheses about the world or the user and validating them against future reality. This harnesses the LLM's tendency to "hallucinate" by reframing it as **inference** and **imagination**.
 
-*   **Candidate Models (Hypotheses):** During idle periods or "dreams," the engine observes patterns in existing memories (e.g., "User likes backend," "User likes Go") and imagines a Candidate Model (e.g., "User values simplicity"). 
+*   **Candidate Models (Hypotheses):** Combined with the Inner Monologue idle method, this process doesn't run constantly. Instead, it triggers whenever a cluster of Episodes reaches a sufficient density of linking. The engine observes these linked patterns (e.g., "User likes backend," "User likes Go") and imagines a Candidate Model (e.g., "User values simplicity"). 
 *   **Confidence Tiers:**
     *   `Episode:` 100% observed reality (Immutable).
     *   `Confirmed Model:` 95% confidence (Validated patterns).
     *   `Candidate Model:` 20% confidence (Unproven hypothesis).
     *   *Note:* The Responder should never present Candidates as absolute truth, only as internal possibilities.
-*   **Validation Loop:** As new conversations occur, the engine tests its Candidate Models against new Episodes. If reality aligns, confidence increases until it becomes a Confirmed Model. 
+*   **Validation Loop:** As new interface events occur, the engine tests its Candidate Models against new Episodes. If reality aligns, confidence increases until it becomes a Confirmed Model. 
 *   **The Golden Rule ("Reality Always Wins"):** Observed memories are immutable. Models summarize observations. Candidates predict reality. If a user explicitly contradicts a Candidate Model, it is instantly rejected and deleted. The engine cannot drift into delusion because reality has the final vote.
-*   **Pipeline:** `Observation → Hypothesis (Candidate) → Experiment (Future Chat) → Validation (Reject/Confirm)`
+*   **Pipeline:** `Interface History → Episodes → Episode Linking → Models → Model Candidates`
