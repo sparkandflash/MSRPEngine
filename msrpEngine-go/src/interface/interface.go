@@ -589,10 +589,11 @@ func Run(newSession bool, reuseSession string, debugMode bool, serverMode bool) 
 	}
 
 	// Initialize the reactor agent and its threshold
+	// CHECK:no error handling for reactor? it is present for responder, but not for reactor.
 	reactorAgent := reactor.NewReactorAgent()
 	reactorCharThreshold := responder.LoadReactorConfigFromEnv().ReactorCharThreshold
 
-
+    //TODO: rename the limit, variables, they are confusing
 	// ── Reactor STM ──────────────────────────────────────────────────────────
 	// SYSTEM_MAX_WORKING_MEMORY_CHARS controls the reactor's short-term memory window (default 2000).
 	reactorMaxChars := 2000
