@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
-	
+	"os"
+
+	"msrpengine/src/agents"
 	engineInterface "msrpengine/src/interface"
 	"msrpengine/src/utils"
 
@@ -21,7 +24,12 @@ func main() {
 	_ = godotenv.Load(utils.ResolvePath(".env"))
 
 	// The validation logic for limits is now strictly enforced in utils/config.go
-	// HTTP validation has been removed for faster startup, as any invalid keys will simply fail gracefully on the first request.
+	tempAgent := agents.NewAgent(utils.Config.ResponderType, utils.Config.ResponderAPIKey, utils.Config.ResponderBaseURL, utils.Config.ResponderModel, "")
+	fmt.Println("\033[90msystem: running pre-flight validation on provider...\033[0m")
+	if err := tempAgent.Validate(context.Background()); err != nil {
+		fmt.Printf("\033[31mFatal error: pre-flight validation failed for %s: %v\033[0m\n", utils.Config.ResponderType, err)
+		os.Exit(1)
+	}
 
 	fmt.Println("\033[32mAll agents loaded successfully. Starting chat...\033[0m")
 	if *serverMode { *debug = true }

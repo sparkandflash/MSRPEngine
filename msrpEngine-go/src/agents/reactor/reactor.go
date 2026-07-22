@@ -74,7 +74,14 @@ func (r *ReactorAgent) React(ctx context.Context, history []contextManager.Inter
 
 	cleanedJSON := cleanJSONResponse(rawResponse)
 	var resp ReactorResponse
-	if err := json.Unmarshal([]byte(cleanedJSON), &resp); err != nil {
+	var parseErr error = json.Unmarshal([]byte(cleanedJSON), &resp)
+	if parseErr == nil {
+		if resp.ModelAttention == 0 && resp.UserAttention == 0 && resp.Serotonin == 0 && resp.Oxytocin == 0 && resp.Cortisol == 0 {
+			parseErr = fmt.Errorf("json unmarshaled to zero values, missing keys")
+		}
+	}
+	
+	if parseErr != nil {
 		// Fallback: robust regex parsing if the LLM hallucinates malformed JSON
 		extractFloat := func(key string) float64 {
 			idx := strings.Index(rawResponse, key)
@@ -104,7 +111,7 @@ func (r *ReactorAgent) React(ctx context.Context, history []contextManager.Inter
 			resp.Oxytocin = ox
 			resp.Cortisol = co
 		} else {
-			return ReactorResponse{ModelAttention: 0.1, UserAttention: 0.7, Serotonin: 0.1, Oxytocin: 0.1, Cortisol: 0.1}, fmt.Errorf("failed to parse reactor JSON output %q: %w", cleanedJSON, err)
+			return ReactorResponse{ModelAttention: 0.1, UserAttention: 0.7, Serotonin: 0.1, Oxytocin: 0.1, Cortisol: 0.1}, fmt.Errorf("failed to parse reactor JSON output %q: %w", cleanedJSON, parseErr)
 		}
 	}
 

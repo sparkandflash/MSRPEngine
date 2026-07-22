@@ -2,6 +2,7 @@ package engineInterface
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/chzyer/readline"
@@ -10,6 +11,7 @@ import (
 type readlinerImpl interface {
 	Close() error
 	Readline() (string, error)
+	Stdout() io.Writer
 }
 
 func StartCLI(historyDir string, inputChan chan<- string) (readlinerImpl, error) {

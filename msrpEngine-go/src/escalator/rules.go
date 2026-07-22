@@ -46,6 +46,7 @@ type Env struct {
 	UserReplyRatio   float64
 
 	HasUnconsolidatedMessages  bool
+	UnconsolidatedChars        int
 	CurrentSleepMode           int
 	TimeSinceConsolidationMins float64
 	TimeSinceReflectionMins    float64
@@ -53,6 +54,7 @@ type Env struct {
 	TimeSinceIntrospectionMins float64
 
 	SYSTEM_CONSOLIDATION_FREQ_MINS float64
+	SYSTEM_CONSOLIDATION_DENSITY   float64
 	SYSTEM_TEMP_SLEEP_CYCLE_MINS   float64
 	SYSTEM_TEMP_SLEEP_DELAY_MINS   float64
 	SYSTEM_TRUE_SLEEP_DELAY_MINS   float64
@@ -104,7 +106,7 @@ func (e *DefaultRuleEngine) UpdateHeartrate(mindState string) {
 	diff := e.Heartrate - restingRate
 	e.Heartrate -= diff * 0.01
 
-	env := e.buildEnv(mindState, false)
+	env := e.buildEnv(mindState, 0)
 
 	for _, mod := range e.compiledModifiers {
 		res, err := expr.Run(mod.Condition.(*vm.Program), env)
@@ -164,7 +166,7 @@ func (e *DefaultRuleEngine) OnUserMessage(mindState string) {
 	ratio := float64(delay) / float64(e.MovingAverageUserDelay)
 	
 	// HR spikes based on reply ratio handled via rules now
-	env := e.buildEnv(mindState, false)
+	env := e.buildEnv(mindState, 0)
 	env.UserReplyRatio = ratio
 	
 	for _, mod := range e.compiledModifiers {
@@ -180,7 +182,7 @@ func (e *DefaultRuleEngine) OnUserMessage(mindState string) {
 	}
 }
 
-func (e *DefaultRuleEngine) buildEnv(mindState string, hasUnconsolidatedMessages bool) Env {
+func (e *DefaultRuleEngine) buildEnv(mindState string, unconsolidatedChars int) Env {
 	var ma, ua, se, ox, co float64
 	parts := strings.Split(mindState, ":")
 	if len(parts) >= 5 {
@@ -203,6 +205,13 @@ func (e *DefaultRuleEngine) buildEnv(mindState string, hasUnconsolidatedMessages
 	if val := os.Getenv("SYSTEM_CONSOLIDATION_FREQ_MINS"); val != "" {
 		if m, err := strconv.ParseFloat(val, 64); err == nil && m > 0 {
 			freqMins = m
+		}
+	}
+
+	consolidationDensity := 3000.0
+	if val := os.Getenv("SYSTEM_CONSOLIDATION_DENSITY"); val != "" {
+		if d, err := strconv.ParseFloat(val, 64); err == nil && d > 0 {
+			consolidationDensity = d
 		}
 	}
 	
@@ -242,7 +251,8 @@ func (e *DefaultRuleEngine) buildEnv(mindState string, hasUnconsolidatedMessages
 		IdleDurationMins: idleDuration.Minutes(),
 		UserReplyRatio:   1.0, // overridden in OnUserMessage if needed
 
-		HasUnconsolidatedMessages:  hasUnconsolidatedMessages,
+		HasUnconsolidatedMessages:  unconsolidatedChars > 0,
+		UnconsolidatedChars:        unconsolidatedChars,
 		CurrentSleepMode:           e.CurrentSleepMode,
 		TimeSinceConsolidationMins: now.Sub(e.LastConsolidation).Minutes(),
 		TimeSinceReflectionMins:    now.Sub(e.LastReflection).Minutes(),
@@ -250,14 +260,15 @@ func (e *DefaultRuleEngine) buildEnv(mindState string, hasUnconsolidatedMessages
 		TimeSinceIntrospectionMins: now.Sub(e.LastIntrospection).Minutes(),
 
 		SYSTEM_CONSOLIDATION_FREQ_MINS: freqMins,
+		SYSTEM_CONSOLIDATION_DENSITY:   consolidationDensity,
 		SYSTEM_TEMP_SLEEP_CYCLE_MINS:   tempSleepCycleMins,
 		SYSTEM_TEMP_SLEEP_DELAY_MINS:   tempSleepDelayMins,
 		SYSTEM_TRUE_SLEEP_DELAY_MINS:   trueSleepDelayMins,
 	}
 }
 
-func (e *DefaultRuleEngine) EvaluateState(mindState string, hasUnconsolidatedMessages bool) EventType {
-	env := e.buildEnv(mindState, hasUnconsolidatedMessages)
+func (e *DefaultRuleEngine) EvaluateState(mindState string, unconsolidatedChars int) EventType {
+	env := e.buildEnv(mindState, unconsolidatedChars)
 
 	var highestPriorityRule *CompiledRule
 	

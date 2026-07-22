@@ -11,19 +11,19 @@ import (
 
 // Scheduler runs the rule engine on a ticker and emits events.
 type Scheduler struct {
-	Engine    RuleEngine
-	EventChan chan EventType
-	GetMindState func() string
-	HasUnconsolidated func() bool
+	Engine                 RuleEngine
+	EventChan              chan EventType
+	GetMindState           func() string
+	GetUnconsolidatedChars func() int
 }
 
 // NewScheduler creates a new scheduler instance.
-func NewScheduler(getMindState func() string, hasUnconsolidated func() bool) *Scheduler {
+func NewScheduler(getMindState func() string, getUnconsolidatedChars func() int) *Scheduler {
 	return &Scheduler{
-		Engine:            NewRuleEngine(),
-		EventChan:         make(chan EventType, 10),
-		GetMindState:      getMindState,
-		HasUnconsolidated: hasUnconsolidated,
+		Engine:                 NewRuleEngine(),
+		EventChan:              make(chan EventType, 10),
+		GetMindState:           getMindState,
+		GetUnconsolidatedChars: getUnconsolidatedChars,
 	}
 }
 
@@ -47,7 +47,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.Engine.UpdateHeartrate(currentMindState)
 
 			// Determine if an event should be emitted
-			evt := s.Engine.EvaluateState(currentMindState, s.HasUnconsolidated())
+			evt := s.Engine.EvaluateState(currentMindState, s.GetUnconsolidatedChars())
 			
 			if evt != EventNothing {
 				// Parse MA for skip logic

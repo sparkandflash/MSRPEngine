@@ -61,10 +61,16 @@ type AppConfig struct {
 	SystemMaxInputChars    int
 	SystemMaxOutputChars   int
 
-	// Web API
-	Port      int
-	WebUser   string
-	WebPass   string
+	// API Server Constraints
+	GlobalDailyLimitMinutes int
+	GlobalCooldownMinutes   int
+	UserDailyLimitMinutes   int
+	MaxCharsPerMessage      int
+	MaxTotalCharsPerUser    int
+	HeartbeatTimeoutSeconds int
+
+	// Web API Config
+	Port      string
 	JWTSecret string
 }
 
@@ -121,12 +127,17 @@ func init() {
 		ReactorMasterLimit:     getEnvAsInt("SYSTEM_REACTOR_MASTER_LIMIT", 5000),
 		SummariserMasterLimit:  getEnvAsInt("SYSTEM_SUMMARISER_MASTER_LIMIT", 16000),
 		EmbeddingMaxInputLimit: getEnvAsInt("EMBEDDING_MAX_INPUT_LIMIT", 32000),
-		SystemMaxInputChars:    getEnvAsInt("SYSTEM_MAX_INPUT_CHARS", 200),
-		SystemMaxOutputChars:   getEnvAsInt("SYSTEM_MAX_OUTPUT_CHARS", 200),
+		SystemMaxInputChars:    getEnvAsInt("SYSTEM_MAX_INPUT_CHARS", 2000),
+		SystemMaxOutputChars:   getEnvAsInt("SYSTEM_MAX_OUTPUT_CHARS", 2000),
 
-		Port:      getEnvAsInt("PORT", 8080),
-		WebUser:   getEnv("WEB_USER", ""),
-		WebPass:   getEnv("WEB_PASS", ""),
+		GlobalDailyLimitMinutes: getEnvAsInt("API_GLOBAL_DAILY_LIMIT_MINS", 120),
+		GlobalCooldownMinutes:   getEnvAsInt("API_GLOBAL_COOLDOWN_MINS", 5),
+		UserDailyLimitMinutes:   getEnvAsInt("API_USER_DAILY_LIMIT_MINS", 15),
+		MaxCharsPerMessage:      getEnvAsInt("API_MAX_CHARS_PER_MESSAGE", 500),
+		MaxTotalCharsPerUser:    getEnvAsInt("API_MAX_TOTAL_CHARS_PER_USER", 5000),
+		HeartbeatTimeoutSeconds: getEnvAsInt("API_HEARTBEAT_TIMEOUT_SEC", 20),
+
+		Port:      getEnv("PORT", "8080"),
 		JWTSecret: getEnv("JWT_SECRET", ""),
 	}
 

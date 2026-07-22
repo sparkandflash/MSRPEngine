@@ -28,9 +28,14 @@ func injectPersonalityName(prompt string) string {
 }
 
 // GetResponderPrompt returns the responder prompt combined with the personality prompt if defined.
-func GetResponderPrompt() string {
+func GetResponderPrompt(maxOutputChars int) string {
 	pers := strings.TrimSpace(rawPersonalityPrompt)
 	base := injectPersonalityName(strings.TrimSpace(rawResponderPrompt))
+	
+	if maxOutputChars > 0 {
+		base += fmt.Sprintf("\n\nCRITICAL INSTRUCTION: Your conversational `reply` text MUST NOT exceed %d characters in length. Plan your thoughts so you conclude properly before this limit.", maxOutputChars)
+	}
+
 	if pers == "" {
 		return base
 	}
@@ -69,9 +74,14 @@ func GetIntrospectionPrompt() string {
 var rawProactivePrompt string
 
 // GetProactivePrompt returns the proactive message prompt combined with the personality prompt if defined.
-func GetProactivePrompt() string {
+func GetProactivePrompt(maxOutputChars int) string {
 	pers := strings.TrimSpace(rawPersonalityPrompt)
 	base := injectPersonalityName(strings.TrimSpace(rawProactivePrompt))
+	
+	if maxOutputChars > 0 {
+		base += fmt.Sprintf("\n\nCRITICAL INSTRUCTION: Your conversational `reply` text MUST NOT exceed %d characters in length. Plan your thoughts so you conclude properly before this limit.", maxOutputChars)
+	}
+
 	if pers == "" {
 		return base
 	}

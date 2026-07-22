@@ -21,7 +21,7 @@ const (
 type RuleEngine interface {
 	UpdateHeartrate(mindState string)
 	OnUserMessage(mindState string)
-	EvaluateState(mindState string, hasUnconsolidatedMessages bool) EventType
+	EvaluateState(mindState string, unconsolidatedChars int) EventType
 	AcknowledgeEvent(evt EventType)
 	OnResponse()
 	ConsumeEnergy(amount float64)

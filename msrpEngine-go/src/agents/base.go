@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"msrpengine/src/utils"
 )
 
 // Agent represents a unified LLM client capable of communicating with various providers.
@@ -42,12 +44,7 @@ func (a *Agent) Generate(ctx context.Context, userPrompt string, sysPromptOverri
 		return a.generateGemini(ctx, userPrompt, activeSysPrompt)
 	case "openai":
 		return a.generateOpenAI(ctx, userPrompt, activeSysPrompt)
-	case "local-binary":
-		// TODO: Implement local binary if needed, or return error for now
-		return "", fmt.Errorf("local-binary not yet unified in base agent")
-	case "embedded":
-		// TODO: Implement embedded logic if needed
-		return "", fmt.Errorf("embedded not yet unified in base agent")
+
 	case "mock":
 		return fmt.Sprintf(`{"reply":"Mock response to: %s","useful_episode_id":""}`, userPrompt), nil
 	default:
@@ -57,7 +54,7 @@ func (a *Agent) Generate(ctx context.Context, userPrompt string, sysPromptOverri
 
 // Validate pings the provider's models endpoint to verify credentials.
 func (a *Agent) Validate(ctx context.Context) error {
-	if a.Type == "mock" || a.Type == "embedded" || a.Type == "local-binary" || a.Type == "" {
+	if a.Type == "mock" || a.Type == "" {
 		return nil
 	}
 
@@ -193,7 +190,9 @@ func (a *Agent) generateGemini(ctx context.Context, userPrompt string, activeSys
 		return "", fmt.Errorf("no response candidate content returned")
 	}
 
-	return candidate.Content.Parts[0].Text, nil
+	result := candidate.Content.Parts[0].Text
+	utils.LogMetrics("gemini", len(jsonData), len(result))
+	return result, nil
 }
 
 // ─── OpenAI Implementation ──────────────────────────────────────────────────
@@ -272,5 +271,7 @@ func (a *Agent) generateOpenAI(ctx context.Context, userPrompt string, activeSys
 		return "", fmt.Errorf("no response choices returned by OpenAI")
 	}
 
-	return oaiResp.Choices[0].Message.Content, nil
+	result := oaiResp.Choices[0].Message.Content
+	utils.LogMetrics("openai", len(jsonData), len(result))
+	return result, nil
 }

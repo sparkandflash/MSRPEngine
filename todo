@@ -1,3 +1,4 @@
+V2 CHANGES TODO
 - create a agents folder, which will contain a common constructor method
 and subfolders with all the agents which will use the constructor method in it
 - next step, master character limits for each agent, define it in config, use to validate other limits so they do not cross the master limits when totaled.
@@ -9,3 +10,38 @@ next set
 
 -ContextMessage --> make this interfaceEvent. 
 interfaceEvent can be a usermessage/userjoin/userleaving/systemevents/responderMessage.
+
+ 
+## Roadmap: Claude's Code Review Findings
+* **Ollama sidecar lifecycle bug:** Move `defer ollamaCmd.Process.Kill()` out of `NewAppCore` (so it doesn't kill Ollama instantly on boot) and into a proper shutdown sequence in `Run()` or `main()`.
+* **Refactor `interface.go` God object:** Split the 692-line file along natural seams:
+  * `bootstrap.go` for `NewAppCore` (subprocess spawning, sessions).
+  * `events.go` for `RunLoop` (event dispatch).
+  * `interface.go` for `AppCore` struct and thin entrypoint wiring.
+* **Secure API server config:** Refactor `server.go` to use `utils.Config.WebUser`, `utils.Config.WebPass`, and `utils.Config.JWTSecret`. Make the server refuse to boot if credentials are empty, avoiding hardcoded fallback passwords.
+* **Reactor zero-value parsing bug:** Fix `reactor.go`. If `json.Unmarshal` succeeds but leaves all emotion fields at `0.00` (due to missing keys in hallucinated JSON), treat it as a parse failure and fall back to the regex extractor.
+* **Clean up `base.go`:** Remove dead stub branches (`"local-binary"`, `"embedded"`) in `Generate` and `Validate`.
+* **Consider Pre-flight validation:** Decide whether to restore provider pre-flight validation in `main.go`.
+
+
+
+  --DONE (not tested)
+
+  - update front end.
+  
+  - next to do: Frontend V2 Status Page Refactoring
+  * Replace login screen with a Status Page (showing rate limit explanations).
+  * Backend: Add `/status` endpoint for read-only polling of interface availability.
+  * Backend: Update `/init` to accept an optional `session_id` to regenerate tokens for returning users.
+  * Frontend: Auto-poll `/status` on load. Disable "Connect" button if busy/cooldown.
+  * Frontend: Add Session ID export/import UI.
+  * Frontend: "Disconnect" button returns to status page and triggers server cooldown.
+
+  - next to do: Public API Server Refactoring
+  * **Moderation**: Use OpenAI Moderation API for prompt safety (free, no downloads).
+  * **Auth**: Keep JWT, but use it to encode a unique Session ID instead of requiring login.
+  * **Global Daily Limit**: Strict max active time for Lyra per day across all users. When reached: "Interaction limit reached for today."
+  * **Global Cooldown**: Only 1 user active at a time. After disconnect (explicit or tab close), fixed global cooldown. Shows: "Interface on cool down. Connect again after X mins."
+  * **Individual Quota**: Users (tracked via JWT) get a fixed daily quota. Can reconnect multiple times until exhausted. Shows: "Session time limit reached, try again later."
+  * **Tab Close Detection**: HTTP Heartbeat (`/ping` every 10s) from frontend. Missing ping = automatic disconnect and triggers global cooldown.
+  * **Persistence**: Maintain a `sessions.json` mapping Session IDs to metadata (start time, message count, history file). Allows users to resume history if they return with the same JWT.

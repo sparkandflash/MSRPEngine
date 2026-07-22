@@ -196,7 +196,11 @@ func Consolidate(ctx context.Context, hm *contextManager.EventLogContext, active
 		if len(docs) > 0 {
 			// Use 1 concurrency as we are in a background process anyway and want to avoid overwhelming local embedding API
 			if err := collection.AddDocuments(context.Background(), docs, 1); err != nil {
-				fmt.Printf("[DEBUG] Failed to add documents to chromem: %v\n", err)
+				if strings.Contains(err.Error(), "429") {
+					// Suppress rate limit errors from Cohere free tier to avoid console spam
+				} else {
+					fmt.Printf("[DEBUG] Failed to add documents to chromem: %v\n", err)
+				}
 			}
 		}
 

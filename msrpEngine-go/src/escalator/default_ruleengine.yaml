@@ -49,13 +49,13 @@ rules:
 
   # -- Active Background Tasks --
   - name: "Consolidate"
-    condition: "MentalEnergy >= 15.0 && HasUnconsolidatedMessages && TimeSinceConsolidationMins >= SYSTEM_CONSOLIDATION_FREQ_MINS"
+    condition: "MentalEnergy >= 15.0 && UnconsolidatedChars >= SYSTEM_CONSOLIDATION_DENSITY && TimeSinceConsolidationMins >= SYSTEM_CONSOLIDATION_FREQ_MINS"
     action: "CONSOLIDATE"
     priority: 4
 
   - name: "ProactiveMessage"
-    # HR is high, model is paying attention, user idle for 60s, and sufficient energy. Cooldown: 1 min
-    condition: "CurrentSleepMode == 0 && Heartrate > 90.0 && ModelAttention > 0.7 && IdleDurationSecs >= 60 && MentalEnergy >= 15.0 && TimeSinceProactiveMins >= 1.0"
+    # HR is high, model is paying attention, user idle for 120s, and sufficient energy. Cooldown: 1 min
+    condition: "CurrentSleepMode == 0 && Heartrate > 90.0 && ModelAttention > 0.7 && IdleDurationSecs >= 120 && MentalEnergy >= 15.0 && TimeSinceProactiveMins >= 1.0"
     action: "PROACTIVE_MESSAGE"
     priority: 3
 

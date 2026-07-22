@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"msrpengine/src/utils"
 )
 
 // Embedder configures the connection to the embedding engine.
@@ -78,7 +80,7 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ollama API returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("embedding API returned status %d", resp.StatusCode)
 	}
 
 	var result struct {
@@ -105,6 +107,8 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 			vec[i] /= norm
 		}
 	}
+
+	utils.LogMetrics("embedder", len(jsonData), 0)
 
 	return vec, nil
 }

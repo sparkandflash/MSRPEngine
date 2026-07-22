@@ -31,7 +31,7 @@ func NewResponderFromEnv() (*Responder, error) {
 		agentType = "mock"
 	}
 
-	sysPrompt := prompts.GetResponderPrompt()
+	sysPrompt := prompts.GetResponderPrompt(utils.Config.SystemMaxOutputChars)
 
 	agent := agents.NewAgent(
 		agentType,
@@ -51,7 +51,7 @@ func (r *Responder) Respond(ctx context.Context, prompt string, mindState string
 }
 
 func (r *Responder) RespondProactive(ctx context.Context, mindState string, history []contextManager.InterfaceEvent, episodes []EpisodeSummary) (string, string, error) {
-	systemPrompt := prompts.GetProactivePrompt()
+	systemPrompt := prompts.GetProactivePrompt(utils.Config.SystemMaxOutputChars)
 	return r.respondInternal(ctx, "[System: The user has been silent. Initiate conversation.]", mindState, history, episodes, systemPrompt)
 }
 

@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -13,49 +15,54 @@ import (
 
 	"msrpengine/src/contextManager"
 	"msrpengine/src/escalator"
+	"msrpengine/src/utils"
 )
 
-// (Globals removed because they evaluated before main() loaded .env)
-
-func getEnv(key, fallback string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return fallback
-}
-
-// ChatInput represents a user message and a channel to return the LLM's response.
 type ChatInput struct {
 	Message      string
 	ResponseChan chan string
 }
 
-// Server handles the web API.
 type Server struct {
 	InputChan     chan<- ChatInput
 	HistoryMgr    *contextManager.EventLogContext
 	Sched         *escalator.Scheduler
 	MindStateFunc func() string
+	SessionMgr    *SessionManager
 }
 
-// StartServer initializes and starts the HTTP server on port 8080.
+type ctxKey string
+
+const sessionKey ctxKey = "sessionID"
+
 func StartServer(inputChan chan<- ChatInput, historyMgr *contextManager.EventLogContext, sched *escalator.Scheduler, msFunc func() string) {
+	if utils.Config.JWTSecret == "" {
+		fmt.Println("System Error: API server JWT_SECRET is missing. Server will not start.")
+		os.Exit(1)
+	}
+
+	sm := NewSessionManager(filepath.Join(utils.ResolvePath("Context"), "sessions.json"))
+
 	s := &Server{
 		InputChan:     inputChan,
 		HistoryMgr:    historyMgr,
 		Sched:         sched,
 		MindStateFunc: msFunc,
+		SessionMgr:    sm,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleHealth)
-	mux.HandleFunc("/login", s.handleLogin)
+	mux.HandleFunc("/status", s.handleStatus) // Read-only polling for availability
+	mux.HandleFunc("/init", s.handleInit) // Generates a new session JWT
+	mux.HandleFunc("/ping", s.authMiddleware(s.handlePing)) // Heartbeat and connection grab
+	mux.HandleFunc("/disconnect", s.authMiddleware(s.handleDisconnect)) // Explicit disconnect
 	mux.HandleFunc("/getMessages", s.authMiddleware(s.handleGetMessages))
 	mux.HandleFunc("/getMessageHistory", s.authMiddleware(s.handleGetMessageHistory))
 	mux.HandleFunc("/sendMessage", s.authMiddleware(s.handleSendMessage))
 
-	port := getEnv("PORT", "8080")
-	if getEnv("DEBUG", "0") == "1" || getEnv("DEBUG", "false") == "true" {
+	port := utils.Config.Port
+	if os.Getenv("DEBUG") == "1" || os.Getenv("DEBUG") == "true" {
 		fmt.Printf("\033[36m[System: Web API started on port %s]\033[0m\n", port)
 	}
 	if err := http.ListenAndServe(":"+port, s.corsMiddleware(mux)); err != nil {
@@ -65,12 +72,14 @@ func StartServer(inputChan chan<- ChatInput, historyMgr *contextManager.EventLog
 
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := getEnv("CORS_ORIGIN", "*")
+		origin := os.Getenv("CORS_ORIGIN")
+		if origin == "" {
+			origin = "*"
+		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 
-		// If it's a preflight OPTIONS request, stop here and return 200
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -93,36 +102,36 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+// handleInit generates a new Session ID and returns a JWT to the client.
+func (s *Server) handleInit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var creds struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+	// Check if they passed a specific session_id to resume
+	var payload struct {
+		SessionID string `json:"session_id"`
 	}
+	// It's optional, so we ignore decode errors
+	_ = json.NewDecoder(r.Body).Decode(&payload)
 
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
+	sessionID := payload.SessionID
+	if sessionID == "" {
+		sessionID = fmt.Sprintf("sess_%d", time.Now().UnixNano())
 	}
-
-	webUser := getEnv("WEB_USER", "admin")
-	webPass := getEnv("WEB_PASS", "password")
-	jwtSecret := []byte(getEnv("JWT_SECRET", "supersecret"))
-
-	if creds.Username != webUser || creds.Password != webPass {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
+	
+	// Create user session data entry
+	s.SessionMgr.mu.Lock()
+	s.SessionMgr.GetUser(sessionID)
+	s.SessionMgr.mu.Unlock()
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"username": creds.Username,
-		"exp":      time.Now().Add(time.Hour * 24).Unix(),
+		"session_id": sessionID,
+		"exp":        time.Now().Add(time.Hour * 24 * 365).Unix(), // 1 year expiration
 	})
 
+	jwtSecret := []byte(utils.Config.JWTSecret)
 	tokenString, err := token.SignedString(jwtSecret)
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -130,7 +139,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
+	json.NewEncoder(w).Encode(map[string]string{"token": tokenString, "session_id": sessionID})
 }
 
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -148,7 +157,7 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		tokenString := parts[1]
-		jwtSecret := []byte(getEnv("JWT_SECRET", "supersecret"))
+		jwtSecret := []byte(utils.Config.JWTSecret)
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method")
@@ -161,8 +170,104 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		next(w, r)
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok || claims["session_id"] == nil {
+			http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+			return
+		}
+
+		sessionID := claims["session_id"].(string)
+		ctx := context.WithValue(r.Context(), sessionKey, sessionID)
+		next(w, r.WithContext(ctx))
 	}
+}
+
+func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sessionID := r.Context().Value(sessionKey).(string)
+
+	// Try to grab lock if we don't have it
+	err := s.SessionMgr.TryConnect(sessionID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Update heartbeat
+	err = s.SessionMgr.Heartbeat(sessionID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "active"})
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Try extracting sessionID from optional Auth header if it exists
+	sessionID := ""
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		parts := strings.Split(authHeader, " ")
+		if len(parts) == 2 && parts[0] == "Bearer" {
+			tokenString := parts[1]
+			jwtSecret := []byte(utils.Config.JWTSecret)
+			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+				return jwtSecret, nil
+			})
+			if err == nil && token.Valid {
+				if claims, ok := token.Claims.(jwt.MapClaims); ok && claims["session_id"] != nil {
+					sessionID = claims["session_id"].(string)
+				}
+			}
+		}
+	}
+
+	err := s.SessionMgr.CheckStatus(sessionID)
+	
+	responsePayload := map[string]interface{}{
+		"limits": map[string]int{
+			"global_daily_limit_mins": utils.Config.GlobalDailyLimitMinutes,
+			"global_cooldown_mins":    utils.Config.GlobalCooldownMinutes,
+			"user_daily_limit_mins":   utils.Config.UserDailyLimitMinutes,
+			"max_chars_per_message":   utils.Config.MaxCharsPerMessage,
+			"max_total_chars_per_user": utils.Config.MaxTotalCharsPerUser,
+		},
+	}
+
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		responsePayload["error"] = err.Error()
+		responsePayload["status"] = "busy_or_cooldown"
+		json.NewEncoder(w).Encode(responsePayload)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	responsePayload["status"] = "available"
+	json.NewEncoder(w).Encode(responsePayload)
+}
+
+func (s *Server) handleDisconnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sessionID := r.Context().Value(sessionKey).(string)
+	s.SessionMgr.Disconnect(sessionID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "disconnected"})
 }
 
 func (s *Server) handleGetMessages(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +286,6 @@ func (s *Server) handleGetMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Prepare physiological state
 	hr := s.Sched.Engine.GetHeartrate()
 	energy := s.Sched.Engine.GetMentalEnergy()
 	mindStateStr := s.MindStateFunc()
@@ -195,43 +299,6 @@ func (s *Server) handleGetMessages(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-}
-
-func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var payload struct {
-		Message string `json:"message"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-
-	msg := strings.TrimSpace(payload.Message)
-	if msg == "" {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"reply": ""})
-		return
-	}
-
-	respChan := make(chan string, 1)
-	s.InputChan <- ChatInput{
-		Message:      msg,
-		ResponseChan: respChan,
-	}
-
-	select {
-	case reply := <-respChan:
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"reply": reply})
-	case <-time.After(90 * time.Second):
-		http.Error(w, "Request timed out", http.StatusGatewayTimeout)
-	}
 }
 
 func (s *Server) handleGetMessageHistory(w http.ResponseWriter, r *http.Request) {
@@ -280,4 +347,66 @@ func (s *Server) handleGetMessageHistory(w http.ResponseWriter, r *http.Request)
 		"messages": paginatedMsgs,
 		"total":    len(allMsgs),
 	})
+}
+
+func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sessionID := r.Context().Value(sessionKey).(string)
+
+	var payload struct {
+		Message string `json:"message"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	msg := strings.TrimSpace(payload.Message)
+	if msg == "" {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"reply": ""})
+		return
+	}
+
+	// 1. Enforce Per-Message Character Limit
+	if len(msg) > utils.Config.MaxCharsPerMessage {
+		http.Error(w, fmt.Sprintf("Message exceeds maximum length of %d characters.", utils.Config.MaxCharsPerMessage), http.StatusBadRequest)
+		return
+	}
+
+	// 2. Check Moderation (OpenAI)
+	flagged, err := CheckModeration(msg)
+	if err != nil {
+		// Log error but optionally allow to pass, or block. We will block to be safe if strictly enforced.
+		fmt.Printf("Moderation error: %v\n", err)
+	}
+	if flagged {
+		http.Error(w, "Message flagged by moderation filters.", http.StatusForbidden)
+		return
+	}
+
+	// 3. Record Message in Session Manager (Checks total char limits and active lock)
+	err = s.SessionMgr.RecordMessage(sessionID, len(msg))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	respChan := make(chan string, 1)
+	s.InputChan <- ChatInput{
+		Message:      msg,
+		ResponseChan: respChan,
+	}
+
+	select {
+	case reply := <-respChan:
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"reply": reply})
+	case <-time.After(90 * time.Second):
+		http.Error(w, "Request timed out", http.StatusGatewayTimeout)
+	}
 }
