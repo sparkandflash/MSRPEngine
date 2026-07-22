@@ -21,8 +21,8 @@ import (
 	"msrpengine/src/idle_methods/episode_memory"
 	"msrpengine/src/idle_methods/reflector"
 	"msrpengine/src/interface/api"
-	"msrpengine/src/reactor"
-	"msrpengine/src/responder"
+	"msrpengine/src/agents/reactor"
+	"msrpengine/src/agents/responder"
 )
 
 type AppCore struct {
@@ -31,7 +31,7 @@ type AppCore struct {
 	ReactorSTM      *consolidator.STMmanager
 	ResponderSTM    *consolidator.STMmanager
 	Sched           *escalator.Scheduler
-	Resp            responder.Responder
+	Resp            *responder.Responder
 	ReactorAgent    *reactor.ReactorAgent
 
 	MindStateVal    string
@@ -589,31 +589,16 @@ func Run(newSession bool, reuseSession string, debugMode bool, serverMode bool) 
 	}
 
 	// Initialize the reactor agent and its threshold
-	// CHECK:no error handling for reactor? it is present for responder, but not for reactor.
 	reactorAgent := reactor.NewReactorAgent()
-	reactorCharThreshold := responder.LoadReactorConfigFromEnv().ReactorCharThreshold
+	reactorCharThreshold := utils.Config.ReactorCharThreshold
 
-    //TODO: rename the limit, variables, they are confusing
 	// ── Reactor STM ──────────────────────────────────────────────────────────
-	// SYSTEM_MAX_WORKING_MEMORY_CHARS controls the reactor's short-term memory window (default 2000).
-	reactorMaxChars := 2000
-	if limitStr := os.Getenv("SYSTEM_MAX_WORKING_MEMORY_CHARS"); limitStr != "" {
-		var limit int
-		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err == nil && limit > 0 {
-			reactorMaxChars = limit
-		}
-	}
+	reactorMaxChars := utils.Config.MaxWorkingMemoryChars
 	reactorSTM := consolidator.NewSTMmanager(reactorMaxChars)
 
 	// ── Responder STM ────────────────────────────────────────────────────────
-	// SYSTEM_RESPONDER_STM_CHARS controls the responder's short-term memory window (default 2000).
-	responderMaxChars := 2000
-	if limitStr := os.Getenv("SYSTEM_RESPONDER_STM_CHARS"); limitStr != "" {
-		var limit int
-		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err == nil && limit > 0 {
-			responderMaxChars = limit
-		}
-	}
+	responderMaxChars := utils.Config.ResponderSTMChars
+	//note: interfacememory(stm) initialsed for responder.
 	responderSTM := consolidator.NewSTMmanager(responderMaxChars)
 
 	// ── Episode Memory Manager ────────────────────────────────────────────────
@@ -635,6 +620,7 @@ func Run(newSession bool, reuseSession string, debugMode bool, serverMode bool) 
 		}
 	}
 
+	// todo: move this logic to contextManager.
 	// ── Session Resolution ───────────────────────────────────────────────────
 	historyDir := utils.ResolvePath(filepath.Join("Context", "conversationHistory"))
 	os.MkdirAll(historyDir, 0755)
@@ -687,6 +673,7 @@ func Run(newSession bool, reuseSession string, debugMode bool, serverMode bool) 
 		os.Exit(1)
 	}
 
+
 	// Instantiate AppCore early to serve as the single source of truth for state
 	core := &AppCore{
 		HistoryMgr:      historyMgr,
@@ -695,10 +682,10 @@ func Run(newSession bool, reuseSession string, debugMode bool, serverMode bool) 
 		ResponderSTM:    responderSTM,
 		Resp:            resp,
 		ReactorAgent:    reactorAgent,
-		MindStateVal:    "0.10:0.70:0.10:0.10:0.10",
+		MindStateVal:    "0.10:0.70:0.10:0.10:0.10", //neutral state
 		DebugMode:       debugMode,
 		PersonalityName: personalityName,
-		MaxInputChars:   maxInputChars,
+		MaxInputChars:   maxInputChars, //does this refer to user's input? or responder's input?
 		MaxOutputChars:  maxOutputChars,
 	}
 

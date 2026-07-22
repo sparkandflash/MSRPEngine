@@ -11,7 +11,7 @@ import (
 
 	"msrpengine/src/consolidator"
 	"msrpengine/src/embedder"
-	"msrpengine/src/summariser"
+	"msrpengine/src/agents/summariser"
 	"msrpengine/src/utils"
 
 	"github.com/philippgille/chromem-go"

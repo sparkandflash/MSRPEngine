@@ -13,7 +13,7 @@ import (
 	"msrpengine/src/embedder"
 	"msrpengine/src/idle_methods/episode_memory"
 	"msrpengine/src/prompts"
-	"msrpengine/src/summariser"
+	"msrpengine/src/agents/summariser"
 	"msrpengine/src/utils"
 
 	"github.com/philippgille/chromem-go"

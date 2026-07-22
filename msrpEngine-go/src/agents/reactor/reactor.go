@@ -1,19 +1,17 @@
 package reactor
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
+	"msrpengine/src/agents"
 	"msrpengine/src/consolidator"
 	"msrpengine/src/prompts"
-	"msrpengine/src/responder"
+	"msrpengine/src/utils"
 )
 
 // ReactorResponse represents the structured JSON output expected from the LLM.
@@ -27,13 +25,28 @@ type ReactorResponse struct {
 
 // ReactorAgent analyzes conversation history to output heart rate adjustments.
 type ReactorAgent struct {
-	config responder.Config
+	agent *agents.Agent
 }
 
 // NewReactorAgent creates and configures a new ReactorAgent.
 func NewReactorAgent() *ReactorAgent {
+	agentType := utils.Config.ReactorType
+	if agentType == "" {
+		agentType = "mock"
+	}
+
+	sysPrompt := prompts.GetReactorPrompt()
+
+	agent := agents.NewAgent(
+		agentType,
+		utils.Config.ReactorAPIKey,
+		utils.Config.ReactorBaseURL,
+		utils.Config.ReactorModel,
+		sysPrompt,
+	)
+
 	return &ReactorAgent{
-		config: responder.LoadReactorConfigFromEnv(),
+		agent: agent,
 	}
 }
 
@@ -44,7 +57,7 @@ func (r *ReactorAgent) React(ctx context.Context, history []consolidator.Message
 	}
 
 	// Use mock behavior if using mock responder or if no keys are configured.
-	if r.config.Type == "mock" || r.config.Type == "" || (r.config.Type == "gemini" && r.config.APIKey == "") || (r.config.Type == "openai" && r.config.APIKey == "" && !strings.Contains(r.config.BaseURL, "localhost") && !strings.Contains(r.config.BaseURL, "127.0.0.1")) {
+	if r.agent.Type == "mock" || r.agent.Type == "" {
 		return r.reactMock(history)
 	}
 
@@ -54,12 +67,7 @@ func (r *ReactorAgent) React(ctx context.Context, history []consolidator.Message
 		return ReactorResponse{ModelAttention: 0.1, UserAttention: 0.7, Serotonin: 0.1, Oxytocin: 0.1, Cortisol: 0.1}, fmt.Errorf("failed to marshal history for reactor: %w", err)
 	}
 
-	systemInstruction := r.config.SystemInstruction
-	if systemInstruction == "" {
-		systemInstruction = prompts.GetReactorPrompt()
-	}
-
-	rawResponse, err := r.callLLM(ctx, string(historyBytes), systemInstruction)
+	rawResponse, err := r.agent.Generate(ctx, string(historyBytes), r.agent.SystemPrompt)
 	if err != nil {
 		return ReactorResponse{ModelAttention: 0.1, UserAttention: 0.7, Serotonin: 0.1, Oxytocin: 0.1, Cortisol: 0.1}, fmt.Errorf("reactor LLM call failed: %w", err)
 	}
@@ -101,8 +109,12 @@ func (r *ReactorAgent) React(ctx context.Context, history []consolidator.Message
 	}
 
 	clampBi := func(val float64) float64 {
-		if val < -1.0 { return -1.0 }
-		if val > 1.0 { return 1.0 }
+		if val < -1.0 {
+			return -1.0
+		}
+		if val > 1.0 {
+			return 1.0
+		}
 		return val
 	}
 
@@ -157,7 +169,7 @@ func (r *ReactorAgent) reactMock(history []consolidator.Message) (ReactorRespons
 
 		for _, word := range negativeKeywords {
 			if strings.Contains(lastUserMsgLower, word) {
-				resp.Cortisol = 0.8 // Stress
+				resp.Cortisol = 0.8    // Stress
 				resp.Serotonin = -0.5 // Sad
 				break
 			}
@@ -174,7 +186,7 @@ func (r *ReactorAgent) reactMock(history []consolidator.Message) (ReactorRespons
 		for _, word := range scaryKeywords {
 			if strings.Contains(lastUserMsgLower, word) {
 				resp.Oxytocin = -0.8 // Fear (Low trust)
-				resp.Cortisol = 0.9 // Extreme stress
+				resp.Cortisol = 0.9  // Extreme stress
 				break
 			}
 		}
@@ -243,181 +255,4 @@ func cleanJSONResponse(raw string) string {
 	}
 	// Fell off the end — return what we found from start
 	return strings.TrimSpace(raw[start:])
-}
-
-func (r *ReactorAgent) callLLM(ctx context.Context, prompt, systemInstruction string) (string, error) {
-	if r.config.Type == "gemini" {
-		return r.callGemini(ctx, prompt, systemInstruction)
-	}
-	return r.callOpenAI(ctx, prompt, systemInstruction)
-}
-
-func (r *ReactorAgent) callOpenAI(ctx context.Context, prompt, systemInstruction string) (string, error) {
-	url := fmt.Sprintf("%s/chat/completions", r.config.BaseURL)
-
-	type openAIChatMessage struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-
-	reqBody := struct {
-		Model          string              `json:"model"`
-		Messages       []openAIChatMessage `json:"messages"`
-		ResponseFormat *struct {
-			Type string `json:"type"`
-		} `json:"response_format,omitempty"`
-	}{
-		Model: r.config.Model,
-		Messages: []openAIChatMessage{
-			{Role: "system", Content: systemInstruction},
-			{Role: "user", Content: prompt},
-		},
-		ResponseFormat: &struct {
-			Type string `json:"type"`
-		}{Type: "json_object"},
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if r.config.APIKey != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", r.config.APIKey))
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
-	}
-
-	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("empty choices returned")
-	}
-
-	return result.Choices[0].Message.Content, nil
-}
-
-func (r *ReactorAgent) callGemini(ctx context.Context, prompt, systemInstruction string) (string, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-		r.config.Model, r.config.APIKey)
-
-	type geminiPart struct {
-		Text string `json:"text"`
-	}
-	type geminiContent struct {
-		Role  string       `json:"role,omitempty"`
-		Parts []geminiPart `json:"parts"`
-	}
-	type geminiSystemInstruction struct {
-		Parts []geminiPart `json:"parts"`
-	}
-
-	reqBody := struct {
-		Contents          []geminiContent          `json:"contents"`
-		SystemInstruction *geminiSystemInstruction `json:"systemInstruction,omitempty"`
-	}{
-		Contents: []geminiContent{
-			{
-				Role: "user",
-				Parts: []geminiPart{
-					{Text: prompt},
-				},
-			},
-		},
-		SystemInstruction: &geminiSystemInstruction{
-			Parts: []geminiPart{
-				{Text: systemInstruction},
-			},
-		},
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var apiErr struct {
-			Error *struct {
-				Message string `json:"message"`
-				Status  string `json:"status"`
-			} `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
-		if apiErr.Error != nil {
-			return "", fmt.Errorf("Gemini API error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
-		}
-		return "", fmt.Errorf("Gemini returned status %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Candidates []struct {
-			Content      geminiContent `json:"content"`
-			FinishReason string        `json:"finishReason,omitempty"`
-		} `json:"candidates"`
-		Error *struct {
-			Message string `json:"message"`
-			Status  string `json:"status"`
-		} `json:"error"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
-	}
-
-	if result.Error != nil {
-		return "", fmt.Errorf("Gemini API error: %s (Status: %s)", result.Error.Message, result.Error.Status)
-	}
-
-	if len(result.Candidates) == 0 {
-		return "", fmt.Errorf("empty candidates returned")
-	}
-
-	candidate := result.Candidates[0]
-	if len(candidate.Content.Parts) == 0 {
-		if candidate.FinishReason != "" && candidate.FinishReason != "STOP" {
-			return "", fmt.Errorf("Gemini response was blocked/terminated. Reason: %s", candidate.FinishReason)
-		}
-		return "", fmt.Errorf("empty candidate content returned by Gemini")
-	}
-
-	return candidate.Content.Parts[0].Text, nil
 }
