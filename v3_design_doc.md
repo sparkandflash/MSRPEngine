@@ -29,4 +29,12 @@ The thought cycle does not run endlessly. The engine utilizes scheduled "Resting
 During these rests, the high-frequency thought cycle pauses, and heavy **Idle Methods** take over. These deterministic background processes are responsible for:
 - Consolidating memories.
 - Building, testing, and breaking Candidate Models (Hypotheses about the user and the world).
-- Performing semantic linking across the memory graph. 
+- Performing semantic linking across the memory graph.
+
+## Energy Economics (Safeguard Against Token Spikes)
+To prevent "racing thoughts" (High Cortisol) from causing an infinite high-frequency loop and draining API credits, the engine utilizes a strict **Mental Energy** economy:
+- Every iteration of the thought loop consumes a specific amount of Mental Energy.
+- If the thought loop is running at maximum frequency (e.g. 8-second pings due to panic or hyper-fixation), her energy pool will drain rapidly.
+- As her energy depletes, the engine naturally throttles the loop frequency, forcing her to "slow down" and catch her breath, breaking the high-frequency spike.
+- Only if her energy drops below a critical minimum threshold is she forcefully put into an "Exhaustion / Rest" state (Temp Sleep or True Sleep).
+- This acts as a natural, biologically accurate circuit breaker. It guarantees that an autonomous, asynchronous LLM cannot runaway with API costs while the user is away from the computer. 
