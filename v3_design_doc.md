@@ -37,4 +37,21 @@ To prevent "racing thoughts" (High Cortisol) from causing an infinite high-frequ
 - If the thought loop is running at maximum frequency (e.g. 8-second pings due to panic or hyper-fixation), her energy pool will drain rapidly.
 - As her energy depletes, the engine naturally throttles the loop frequency, forcing her to "slow down" and catch her breath, breaking the high-frequency spike.
 - Only if her energy drops below a critical minimum threshold is she forcefully put into an "Exhaustion / Rest" state (Temp Sleep or True Sleep).
-- This acts as a natural, biologically accurate circuit breaker. It guarantees that an autonomous, asynchronous LLM cannot runaway with API costs while the user is away from the computer. 
+- This acts as a natural, biologically accurate circuit breaker. It guarantees that an autonomous, asynchronous LLM cannot runaway with API costs while the user is away from the computer.
+
+## The Mode Switch: Convergence vs. Wandering
+To mimic realistic human cognition, the Context Crawler toggles between two distinct retrieval modes, driven entirely by a simple, cheap signal: **The presence of a queued user message.**
+
+### 1. Convergence Mode (User Message Present)
+When a user message is waiting in the queue, the crawler seeks **convergence**. 
+- It actively retrieves well-established, highly connected, and directly relevant memories.
+- The goal is **grounding**: ensuring her thought cycle rapidly centers on the user's input so she can formulate a coherent, on-topic response.
+
+### 2. Wandering Mode (No User Message)
+When the user is absent, the crawler shifts into **novelty-seeking (wandering) mode**.
+- It drifts toward under-explored, loosely connected, or novel memory nodes (the edges of her memory graph).
+- This produces "mind-wandering" or day-dreaming, safely exploring tangents because no user is waiting for a direct answer.
+- **Output Routing:** Thoughts generated in this mode are *not* automatically sent to the user. Instead, they are stored internally as candidate hypotheses, half-formed facts, or dream states. They only reach the user if the deterministic `ProactiveMessage` rule independently decides it's time to speak up.
+
+### Clean Transitions (The Snap-to-Attention)
+The transition between these two states is instantaneous. At the start of *every* thought cycle step, the engine checks for queued user input. If she is three hops deep into a tangential "wandering" thought chain and a user message suddenly arrives, the crawler immediately aborts the wander and snaps back into Convergence mode on the very next iteration. This ensures she doesn't respond to a direct question with a disorienting, tangent-flavored daydream.
