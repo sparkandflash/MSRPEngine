@@ -1,0 +1,26 @@
+# below target behaviours should be achiveable regardless of the personality prompt.
+# how to make it possible? with a mix of specific memory struture design, idle methods, system prompts and what else?
+
+- resolving contradictions: 
+lets say, when user does efg char does xyz and seeks that user do abc, so they wont do xyz. but if user does abc, it will do pqr, and pqr demands that user shouldnt do abc, but do efg.
+
+lets say it is sort of an irrational state and char is in contraction with themselves. above behaviour is a symtom of unresolved conflict within char.
+
+- vast variations in response/prompt lengths. 
+we have been able to achive this with energy levels, makeing responder output dry responses.
+but so far, we have not been able to observe model's decreasing intrest (MA value) unless we program it to the personality prompt. 
+so there no context-driven decrease in model's intrest during conversation. or repeated topics inducing boredom or disinterest.
+
+- responder does not acknlowgde lack of context, it will auto complete as per it's natural behaviour. instead it should behave as per data in the context.
+
+- dimensions of a mind.
+the subconsious world (the system)
+the inner world: thoughts, assumptions, internal reactions. 
+the outer world: what it responds, or prompts with, way it talks, tone, length, emotion visible.
+
+if inner-world and outer-world are similar, sim-mind is sincere and guinine. 
+if they are not similar, then the model is calculating, careful, not nesscessarly manipulative.
+
+- future planning: engine should able to identify lacking context, and either prompt user or uncover during linking. it should remind itself to prompt user later or keep an eye out for an answer, derive it from existing memory/context. future planning might also extend to whatever goals engine might come up with. (which may span multiple sessions)
+
+- meta context: currently system messages somewhat track this, but there has to be a way to keep track of how the context is modified, how did it benefit or impede, and this meta context is part of the memory that can be passed to the responder. so when a fact changed, it will know why exactly it changed.

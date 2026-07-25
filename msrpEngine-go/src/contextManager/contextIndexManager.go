@@ -31,7 +31,7 @@ type ChromemIndexManager struct {
 // NewChromemIndexManager initializes a new local chromem-go persistent database.
 // It ensures the Context/vector directory exists.
 func NewChromemIndexManager() (*ChromemIndexManager, error) {
-	baseDir := utils.ResolvePath(filepath.Join("Context", "vector"))
+	baseDir := utils.ResolvePath(filepath.Join("Context", "chromem_db"))
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create vector directory: %w", err)
 	}
@@ -51,8 +51,9 @@ func NewChromemIndexManager() (*ChromemIndexManager, error) {
 func (m *ChromemIndexManager) AddDocument(collectionName string, id string, text string, metadata map[string]string) error {
 	ctx := context.Background()
 
-	// Get or create collection. Using nil for metadata and embedding function uses defaults.
-	collection, err := m.db.GetOrCreateCollection(collectionName, nil, nil)
+	// Get or create collection using the local embedder
+	emb := NewLocalEmbedder()
+	collection, err := m.db.GetOrCreateCollection(collectionName, nil, emb.AsChromemEmbeddingFunc())
 	if err != nil {
 		return fmt.Errorf("failed to get/create collection: %w", err)
 	}
@@ -77,9 +78,19 @@ func (m *ChromemIndexManager) AddDocument(collectionName string, id string, text
 func (m *ChromemIndexManager) SearchContext(collectionName string, query string, limit int) ([]SearchResult, error) {
 	ctx := context.Background()
 
-	collection := m.db.GetCollection(collectionName, nil)
+	emb := NewLocalEmbedder()
+	collection := m.db.GetCollection(collectionName, emb.AsChromemEmbeddingFunc())
 	if collection == nil {
 		// If collection doesn't exist, simply return empty results
+		return []SearchResult{}, nil
+	}
+
+	// chromem-go throws an error if limit > total documents, so cap it
+	count := collection.Count()
+	if limit > count {
+		limit = count
+	}
+	if limit == 0 {
 		return []SearchResult{}, nil
 	}
 
@@ -106,7 +117,8 @@ func (m *ChromemIndexManager) SearchContext(collectionName string, query string,
 // to determine if a message has already been processed by the consolidation loop.
 func (m *ChromemIndexManager) IsMessageConsolidated(id string) bool {
 	ctx := context.Background()
-	collection := m.db.GetCollection("consolidation_index", nil)
+	emb := NewLocalEmbedder()
+	collection := m.db.GetCollection("consolidation_index", emb.AsChromemEmbeddingFunc())
 	if collection == nil {
 		return false
 	}
@@ -119,7 +131,8 @@ func (m *ChromemIndexManager) IsMessageConsolidated(id string) bool {
 func (m *ChromemIndexManager) MarkConsolidated(ids []string) error {
 	ctx := context.Background()
 	
-	collection, err := m.db.GetOrCreateCollection("consolidation_index", nil, nil)
+	emb := NewLocalEmbedder()
+	collection, err := m.db.GetOrCreateCollection("consolidation_index", nil, emb.AsChromemEmbeddingFunc())
 	if err != nil {
 		return fmt.Errorf("failed to get/create consolidation index: %w", err)
 	}

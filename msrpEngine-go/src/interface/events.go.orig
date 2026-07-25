@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -13,10 +12,9 @@ import (
 	"msrpengine/src/agents/responder"
 	"msrpengine/src/contextManager"
 	"msrpengine/src/escalator"
-	"msrpengine/src/idle_methods"
 	"msrpengine/src/idle_methods/consolidation"
-	"msrpengine/src/idle_methods/context_swapper"
 	"msrpengine/src/idle_methods/episode_memory"
+	"msrpengine/src/idle_methods/context_swapper"
 	"msrpengine/src/idle_methods/weaver"
 	"msrpengine/src/utils"
 )
@@ -94,7 +92,7 @@ func (c *AppCore) RunLoop(engineStartTime time.Time, lastWakeTime time.Time, rl 
 				c.SetUnconsolidated(true)
 				c.AddUnconsolidatedChars(len(sysMsg))
 			case escalator.EventReflect:
-				sysMsg := "[System: Context swapper activated - retrieving relevant memories]"
+				sysMsg := "[System: Reflecting on past memories]"
 				utils.LogDebug("%s", sysMsg)
 				c.InjectSystemMessage(sysMsg)
 
@@ -111,7 +109,7 @@ func (c *AppCore) RunLoop(engineStartTime time.Time, lastWakeTime time.Time, rl 
 					}
 				}
 			case escalator.EventIntrospect:
-				sysMsg := "[System: Weaver activated - analyzing memory graph]"
+				sysMsg := "[System: Deep introspection initiated]"
 				utils.LogDebug("%s", sysMsg)
 				c.InjectSystemMessage(sysMsg)
 
@@ -119,15 +117,6 @@ func (c *AppCore) RunLoop(engineStartTime time.Time, lastWakeTime time.Time, rl 
 			case escalator.EventProactiveMessage:
 				ctx := context.Background()
 				activeEps := c.EpisodeMgr.GetActive()
-
-				// Sort by mind state similarity
-				sort.Slice(activeEps, func(i, j int) bool {
-					d1 := idle_methods.CalculateMindStateDistance(c.GetMindState(), activeEps[i].PeakMindState)
-					d2 := idle_methods.CalculateMindStateDistance(c.GetMindState(), activeEps[j].PeakMindState)
-					return d1 < d2
-				})
-
-				activeEps = idle_methods.GetEpisodesByCharCount(activeEps, utils.Config.EpisodeMemoryChars, c.Sched.Engine.GetEnergyDrainRate())
 				episodes := make([]responder.EpisodeSummary, len(activeEps))
 				var allLinks []contextManager.EpisodeLink
 				for i, ep := range activeEps {
@@ -141,8 +130,7 @@ func (c *AppCore) RunLoop(engineStartTime time.Time, lastWakeTime time.Time, rl 
 				utils.LogDebug("%s", sysMsg)
 				c.InjectSystemMessage(sysMsg)
 
-				interfaceEvents := idle_methods.GetInterfaceEventsByCharCount(c.ResponderSTM.GetNoFlags(), utils.Config.ResponderSTMChars, c.Sched.Engine.GetEnergyDrainRate())
-				reply, usefulEpisodeID, usefulLinkID, falseLinkID, err := c.Resp.RespondProactive(ctx, c.GetMindState(), interfaceEvents, episodes, allLinks)
+				reply, usefulEpisodeID, usefulLinkID, falseLinkID, err := c.Resp.RespondProactive(ctx, c.GetMindState(), c.ResponderSTM.GetNoFlags(), episodes, allLinks)
 				if err == nil {
 					// Enforce output character limit
 					replyRunes := []rune(reply)
@@ -306,42 +294,32 @@ func (c *AppCore) RunLoop(engineStartTime time.Time, lastWakeTime time.Time, rl 
 				}(activeEps)
 
 				continue
-			} else if input == ">>contextswap" {
-				fmt.Fprintf(c.OutWriter, "system: context swapper started in the background...\n")
-				sysMsg := "[System: Context swapper activated manually]"
-				utils.LogDebug("%s", sysMsg)
-				c.InjectSystemMessage(sysMsg)
-
-				go func() {
-					activeEps := c.EpisodeMgr.GetActive()
-					episodes := make([]responder.EpisodeSummary, len(activeEps))
-					for i, ep := range activeEps {
-						episodes[i] = responder.EpisodeSummary{ID: ep.ID, Facts: ep.Facts, PeakMindState: ep.PeakMindState}
+			} else if input == ">>reflect" {
+				activeEps := c.EpisodeMgr.GetActive()
+				episodes := make([]responder.EpisodeSummary, len(activeEps))
+				for i, ep := range activeEps {
+					episodes[i] = responder.EpisodeSummary{ID: ep.ID, Facts: ep.Facts, PeakMindState: ep.PeakMindState}
+				}
+				matchedFacts, err := context_swapper.Reflect(c.GetMindState(), episodes)
+				if err != nil {
+					if c.DebugMode {
+						fmt.Fprintf(c.OutWriter, "[DEBUG] Reflect explicitly failed: %v\n", err)
 					}
-					matchedFacts, err := context_swapper.Reflect(c.GetMindState(), episodes)
-					if err != nil {
-						fmt.Fprintf(c.OutWriter, "\nsystem: error: background context swapper failed: %v\n> ", err)
-					} else {
-						for _, fact := range matchedFacts {
-							c.EpisodeMgr.Push(fact)
+				} else {
+					for _, fact := range matchedFacts {
+						c.EpisodeMgr.Push(fact)
+						if c.DebugMode {
+							fmt.Fprintf(c.OutWriter, "[DEBUG] Reflect explicitly loaded fact %s\n", fact.ID)
 						}
-						fmt.Fprintf(c.OutWriter, "\nsystem: background context swapper completed successfully. %d new facts loaded into context.\n> ", len(matchedFacts))
 					}
-				}()
+				}
 				continue
-			} else if input == ">>weave" {
-				fmt.Fprintf(c.OutWriter, "system: weaver started in the background...\n")
-				sysMsg := "[System: Weaver activated manually]"
-				utils.LogDebug("%s", sysMsg)
-				c.InjectSystemMessage(sysMsg)
-
-				go func() {
-					if err := weaver.Weave(c.EpisodeMgr, contextManager.GetLinkManager()); err != nil {
-						fmt.Fprintf(c.OutWriter, "\nsystem: error: background weaver failed: %v\n> ", err)
-					} else {
-						fmt.Fprintf(c.OutWriter, "\nsystem: background weaver completed successfully. New relationship linked.\n> ")
-					}
-				}()
+			} else if strings.HasPrefix(input, ">>introspect") {
+				if err := weaver.Weave(c.EpisodeMgr, contextManager.GetLinkManager()); err != nil {
+					fmt.Fprintf(c.OutWriter, "system: error: introspection failed: %v\n", err)
+				} else {
+					fmt.Fprintf(c.OutWriter, "system: introspection completed. Behavioral fact saved.\n")
+				}
 				continue
 			}
 
@@ -435,15 +413,6 @@ func (c *AppCore) RunLoop(engineStartTime time.Time, lastWakeTime time.Time, rl 
 
 			// Build the episode summaries from the active episode pool
 			activeEps := c.EpisodeMgr.GetActive()
-
-			// Sort by mind state similarity
-			sort.Slice(activeEps, func(i, j int) bool {
-				d1 := idle_methods.CalculateMindStateDistance(c.GetMindState(), activeEps[i].PeakMindState)
-				d2 := idle_methods.CalculateMindStateDistance(c.GetMindState(), activeEps[j].PeakMindState)
-				return d1 < d2
-			})
-
-			activeEps = idle_methods.GetEpisodesByCharCount(activeEps, utils.Config.EpisodeMemoryChars, c.Sched.Engine.GetEnergyDrainRate())
 			episodes := make([]responder.EpisodeSummary, len(activeEps))
 			var allLinks []contextManager.EpisodeLink
 			for i, ep := range activeEps {
@@ -455,8 +424,7 @@ func (c *AppCore) RunLoop(engineStartTime time.Time, lastWakeTime time.Time, rl 
 			// Respond using responder's clean STM (no stored flags) + active episodes
 			// Pass mental energy as a length hint appended to the mindstate string.
 			energyHint := fmt.Sprintf("%s|energy:%.0f|drain_rate:%.1f/s", c.GetMindState(), c.Sched.Engine.GetMentalEnergy(), c.Sched.Engine.GetEnergyDrainRate())
-			interfaceEvents := idle_methods.GetInterfaceEventsByCharCount(c.ResponderSTM.GetNoFlags(), utils.Config.ResponderSTMChars, c.Sched.Engine.GetEnergyDrainRate())
-			reply, usefulEpisodeID, usefulLinkID, falseLinkID, err := c.Resp.Respond(ctx, input, energyHint, interfaceEvents, episodes, allLinks)
+			reply, usefulEpisodeID, usefulLinkID, falseLinkID, err := c.Resp.Respond(ctx, input, energyHint, c.ResponderSTM.GetNoFlags(), episodes, allLinks)
 			if err != nil {
 				time.Sleep(time.Until(startTime.Add(3 * time.Second)))
 				done <- true

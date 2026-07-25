@@ -46,16 +46,16 @@ func NewResponderFromEnv() (*Responder, error) {
 	}, nil
 }
 
-func (r *Responder) Respond(ctx context.Context, prompt string, mindState string, history []contextManager.InterfaceEvent, episodes []EpisodeSummary) (string, string, error) {
-	return r.respondInternal(ctx, prompt, mindState, history, episodes, r.agent.SystemPrompt)
+func (r *Responder) Respond(ctx context.Context, prompt string, mindState string, history []contextManager.InterfaceEvent, episodes []EpisodeSummary, links []contextManager.EpisodeLink) (string, string, string, string, error) {
+	return r.respondInternal(ctx, prompt, mindState, history, episodes, links, r.agent.SystemPrompt)
 }
 
-func (r *Responder) RespondProactive(ctx context.Context, mindState string, history []contextManager.InterfaceEvent, episodes []EpisodeSummary) (string, string, error) {
+func (r *Responder) RespondProactive(ctx context.Context, mindState string, history []contextManager.InterfaceEvent, episodes []EpisodeSummary, links []contextManager.EpisodeLink) (string, string, string, string, error) {
 	systemPrompt := prompts.GetProactivePrompt(utils.Config.SystemMaxOutputChars)
-	return r.respondInternal(ctx, "[System: The user has been silent. Initiate conversation.]", mindState, history, episodes, systemPrompt)
+	return r.respondInternal(ctx, "[System: The user has been silent. Initiate conversation.]", mindState, history, episodes, links, systemPrompt)
 }
 
-func (r *Responder) respondInternal(ctx context.Context, prompt string, mindState string, history []contextManager.InterfaceEvent, episodes []EpisodeSummary, systemPrompt string) (string, string, error) {
+func (r *Responder) respondInternal(ctx context.Context, prompt string, mindState string, history []contextManager.InterfaceEvent, episodes []EpisodeSummary, links []contextManager.EpisodeLink, systemPrompt string) (string, string, string, string, error) {
 
 	// Clean history to remove internal message IDs to prevent LLM confusion
 	type cleanHistory struct {
@@ -75,23 +75,24 @@ func (r *Responder) respondInternal(ctx context.Context, prompt string, mindStat
 		"mindstate": mindState,
 		"history":   cleanedHistory,
 		"episodes":  episodes,
+		"links":     links,
 	}
 	payloadBytes, err := json.Marshal(userPayload)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to marshal user payload: %w", err)
+		return "", "", "", "", fmt.Errorf("failed to marshal user payload: %w", err)
 	}
 
 	rawResponse, err := r.agent.Generate(ctx, string(payloadBytes), systemPrompt)
 	if err != nil {
-		return "", "", err
+		return "", "", "", "", err
 	}
 
-	reply, episodeID, err := parseResponderOutput(rawResponse)
-	return reply, episodeID, err
+	reply, episodeID, usefulLinkID, falseLinkID, err := parseResponderOutput(rawResponse)
+	return reply, episodeID, usefulLinkID, falseLinkID, err
 }
 
 // parseResponderOutput parses the structured JSON the responder LLM is expected to return.
-func parseResponderOutput(raw string) (string, string, error) {
+func parseResponderOutput(raw string) (string, string, string, string, error) {
 	raw = strings.TrimSpace(raw)
 	// Strip markdown code fences if present
 	if strings.HasPrefix(raw, "```json") {
@@ -107,10 +108,12 @@ func parseResponderOutput(raw string) (string, string, error) {
 	var out struct {
 		Reply           string `json:"reply"`
 		UsefulEpisodeID string `json:"useful_episode_id"`
+		UsefulLinkID    string `json:"useful_link_id"`
+		FalseLinkID     string `json:"false_link_id"`
 	}
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
 		// Graceful fallback: treat the whole response as plain reply text
-		return raw, "", nil
+		return raw, "", "", "", nil
 	}
-	return out.Reply, out.UsefulEpisodeID, nil
+	return out.Reply, out.UsefulEpisodeID, out.UsefulLinkID, out.FalseLinkID, nil
 }

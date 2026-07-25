@@ -1,0 +1,636 @@
+==========================================
+V3.1 VRON ARCHITECTURE
+==========================================
+
+Core Philosophy
+---------------
+The engine should not consist of many specialized modules (Responder, Reactor,
+Planner, Weaver, etc.).
+
+Instead, the engine only understands one primitive:
+
+    VRon (Virtual Neuron)
+
+A VRon is an ephemeral reasoning process.
+
+It is born, performs a single cognitive task, leaves behind facts,
+then disappears.
+
+Behavior emerges from context rather than hardcoded modules.
+
+
+==========================================
+ENGINE
+==========================================
+
+Engine
+│
+├── Scheduler
+├── Spawn Queue (rate limiter)
+├── Memory Graph
+├── Retriever
+└── VRons (spawned dynamically)
+
+The Scheduler is deterministic.
+
+It only decides whether a new VRon should exist.
+
+Examples:
+- User sent a message
+- Context exceeded threshold
+- Sleep cycle
+- Pending tests exist
+- Background processing required
+
+
+==========================================
+VRON
+==========================================
+
+A VRon has NO permanent role.
+
+It is not:
+- a responder
+- a summarizer
+- a planner
+- a dreamer
+
+Instead,
+
+its CURRENT CONTEXT determines its goal.
+
+Examples:
+
+User asks question
+→ Goal = Respond
+
+Conversation too large
+→ Goal = Summarize
+
+Need more information
+→ Goal = Retrieve Memory
+
+Need contradiction checking
+→ Goal = Test Facts
+
+Need logical reasoning
+→ Goal = Execute Logic
+
+Need relation weaving
+→ Goal = Build Relations
+
+[OPEN QUESTION — not yet resolved]
+What actually performs goal-determination?
+  (a) a cheap deterministic classifier (keyword / embedding routing), or
+  (b) an LLM call ("given this context, what should I do")
+If (b), this call counts against the spawn/energy budget below —
+it is itself a VRon-equivalent cost, not a free step.
+
+
+==========================================
+VRON LIFECYCLE
+==========================================
+
+Spawn (queued — see Spawn Queue)
+
+↓
+
+Read Context
+
+↓
+
+Determine Goal
+
+↓
+
+Execute
+
+↓
+
+Spawn child VRons if needed
+
+↓
+
+Return Facts
+
+↓
+
+Destroy
+
+
+VRons never persist.
+
+Only the facts they generate persist.
+
+
+==========================================
+SPAWN QUEUE (RATE LIMITING)
+==========================================
+
+Depth is intentionally left UNBOUNDED. It does not need a hard cap because
+of the natural terminator described below. What must be bounded instead is
+CALL RATE, since every VRon (other than pure-embedding goals) is a real LLM
+call against a real, limited quota.
+
+Mechanism: token-bucket spawn queue.
+- N spawns permitted per time window.
+- Excess spawn requests wait for the next window.
+- Applies globally across all VRon goal types.
+
+Priority tiers within the queue:
+- TIER 1 (highest): VRons descending from an active, user-triggered
+  Respond-goal chain. The user is waiting; this chain should not be
+  starved by background work.
+- TIER 2: background/idle-triggered chains (Weaver passes, gap-detection,
+  sleep-cycle consolidation, etc).
+
+Cost weighting (energy, not just rate):
+- Retrieve-goal VRons are cheap (embedding-only calls where possible).
+- Test-goal, Respond-goal, and Logic-authoring VRons are full LLM calls
+  and should draw proportionally more from the shared Mental Energy pool.
+- Energy MUST be a single shared pool across the whole engine, not
+  scoped per-VRon or per-chain — this is what makes a deep chain
+  naturally self-limiting (a long chain costs proportionally more and
+  will exhaust the pool and throttle on its own).
+
+
+==========================================
+NATURAL TERMINATION (why unbounded depth is safe)
+==========================================
+
+A Retrieve-goal VRon has exactly two terminal outcomes:
+  1. Finds the needed fact → done.
+  2. Finds nothing → returns UNKNOWN → done.
+
+There is no third branch where a VRon spawns another Retrieve to "search
+harder." UNKNOWN is itself one of the four fixed Test outcomes (see below)
+and is a leaf, not a branch. This means a well-formed chain bottoms out in
+a small, predictable number of hops on its own. The spawn queue above is a
+backstop against BURST traffic (many small chains arriving close together),
+not a defense against any single chain running away — that path is closed
+by construction.
+
+
+==========================================
+VRON COMMUNICATION
+==========================================
+
+VRons may spawn other VRons.
+
+Example
+
+VRon
+Goal:
+Respond
+
+↓
+
+Needs more memory
+
+↓
+
+Spawn VRon
+
+Goal:
+Retrieve Memory
+
+↓
+
+Returns Facts
+
+↓
+
+Dies
+
+↓
+
+Parent continues.
+
+
+Likewise
+
+VRon
+
+↓
+
+Needs contradiction testing
+
+↓
+
+Spawn Test VRon
+
+↓
+
+Returns
+
+PASS / FAIL / CONFLICT / UNKNOWN
+
+↓
+
+Dies
+
+
+==========================================
+VRON OUTPUT
+==========================================
+
+Every VRon produces facts.
+
+The status of its reasoning is always one of
+
+PASS
+FAIL
+CONFLICT
+UNKNOWN (Insufficient Information)
+
+Those outputs become graph mutations.
+
+
+==========================================
+TEST -> RESULT ARCHITECTURE
+==========================================
+
+Everything in cognition is treated as a Test.
+
+Each Test is itself a VRon: a full, independently-scoped LLM call given
+only the two nodes under comparison (plus minimal supporting context) as
+its entire world. It returns one of the four fixed outcomes, then dies.
+No persistence, no memory of itself — a disposable judgment instance.
+
+Inputs
+
+↓
+
+Test
+
+↓
+
+PASS / FAIL / CONFLICT / UNKNOWN
+
+↓
+
+Graph Mutation
+
+↓
+
+New Fact
+
+
+OUTCOME RULES (deterministic, based on stored node strength —
+not an LLM judgment call):
+
+PASS
+  → Both nodes consistent. Strengthen both.
+
+FAIL
+  → A high-strength node invalidates a LOWER-strength node.
+  → The weaker node fails. Clear winner, no ambiguity.
+
+CONFLICT
+  → A high-strength node is tested against ANOTHER high-strength node
+    (weights within some delta of each other — exact delta TBD by tuning).
+  → Neither side has grounds to auto-win. This is reserved for genuinely
+    rare, high-stakes disagreements between two things that each already
+    earned real confidence — NOT for routine mismatches. Maps to a
+    Cortisol spike (see Mindstate Mapping below).
+  → CONFLICT does not auto-resolve toward the heavier-weighted side.
+    If it did, it would just be FAIL with extra steps, and the
+    "irrational/unresolved tension" behavior would never surface.
+
+UNKNOWN
+  → Insufficient data to run the test at all.
+  → Maps to UA (uncertainty) rising — NOT to MA (attention) falling.
+    An unanswered question should read as active curiosity about a
+    missing piece, not disinterest.
+  → Becomes a Planned Test (see below).
+
+
+PROVENANCE AND TRUST FLOOR (applies to FAIL / CONFLICT resolution):
+  A node's high strength can originate from two different places:
+    (a) directly user-stated
+    (b) self-derived, reinforced through internal Test passes over time
+  These are NOT equal footing at equal weight. A self-derived node has
+  already passed through at least one fallible LLM inference step; a
+  user-stated node is closer to ground truth about what the user
+  actually said. Self-derived nodes should require a HIGHER strength
+  threshold than user-stated nodes before they're allowed to resist
+  contradiction from that user — otherwise the engine can end up
+  confidently overriding a user's own stated preference with something
+  it hallucinated and then reinforced into false confidence.
+
+ARGUING DOWN A HIGH-STRENGTH FACT (user pushes back on a held belief):
+  - Triggers a Test VRon: existing fact (Node A) vs. the user's new
+    argument, freshly created as a node (Node B).
+  - A winning argument DECREMENTS the held fact's weight rather than
+    flipping it outright — reversal should take sustained, accumulated
+    pushback, not one good line, matching the asymmetric-friction
+    behavior used elsewhere in this system.
+  - Tone of concession is decided by WHETHER THE WINNING ARGUMENT
+    CONTAINED GENUINELY NEW INFORMATION:
+      - New information present → graceful concession (legitimate
+        epistemic update).
+      - No new information, weight simply eroded by repetition →
+        reluctant / "pissed" concession (worn down, not persuaded).
+    This is a concrete, checkable branch, not a tonal coin flip.
+
+CONTRADICTION IN SELF-GENERATED DIRECTIVES (e.g. "do X, not Y" later
+conflicting with "do Y, not X"):
+  - This does NOT require graph-cycle-detection machinery.
+  - Directives must be reified as their own stored, testable nodes at
+    the moment they're generated (not left implicit in response prose).
+  - An ordinary pairwise Test between two directive-nodes, with
+    CONFLICT as a legitimate outcome, catches direct adjacent
+    contradictions on its own.
+  - Known limitation: this only catches DIRECT pairwise contradictions.
+    A longer indirect chain (A rules out B, B rules out C, C rules out
+    D, D rules out A, with no two adjacent nodes directly opposing)
+    would not necessarily surface via pairwise semantic-similarity
+    testing, since non-adjacent nodes may not be embedding-close.
+    Not solved in v3.1 — flagged for later if it turns out to matter.
+
+
+==========================================
+MINDSTATE MAPPING
+==========================================
+
+PASS      → reinforces weight of tested nodes (stubbornness / momentum)
+FAIL      → weaker node's weight decreases
+CONFLICT  → Cortisol spike (genuine, rare, earned tension)
+UNKNOWN   → UA (uncertainty) rises, NOT MA falling
+
+Boredom / decreasing interest (MA decay):
+  Triggered by Test redundancy — repeatedly running the same or highly
+  similar Tests against the same semantic region with predictable PASS
+  results. If nothing novel is being tested, MA decays. This produces
+  context-driven disinterest without needing it hardcoded into the
+  personality prompt.
+
+
+==========================================
+PLANNED TESTS
+==========================================
+
+If a test returns UNKNOWN, it is not discarded.
+
+It becomes a pending test.
+
+Future conversations automatically attempt to complete it when new
+information arrives. The result of one Test may also spawn a new,
+deeper Test, creating chains of long-term goals that can span multiple
+sessions.
+
+
+==========================================
+META CONTEXT (supersession, not overwrite)
+==========================================
+
+When a Result changes or replaces an earlier Result, the earlier one is
+NOT deleted. It is marked as superseded-by the new Result, preserving a
+traceable chain. This is what allows the engine to answer "why did this
+fact change" — the answer is the chain itself, not a separate log.
+
+Consistent with the general rule used throughout this system: rejected
+or replaced data gets quarantined/marked, never silently deleted.
+
+
+==========================================
+MEMORY GRAPH
+==========================================
+
+Conversation
+
+↓
+
+Fact Nodes
+
+↓
+
+Relation Nodes
+
+↓
+
+Summary Nodes
+
+↓
+
+Model Nodes
+
+
+The graph continuously evolves.
+
+Everything is represented as nodes.
+
+The node itself never stores "its type".
+
+Its meaning emerges from its contents
+and graph connectivity.
+
+
+==========================================
+WEAVER
+==========================================
+
+Originally a standalone module.
+
+Now simply another goal a VRon can perform.
+
+Input:
+Fact Node
+
+↓
+
+Find semantically similar nodes
+
+↓
+
+Generate Proto Relations
+
+↓
+
+Responder validates
+
+↓
+
+Successful relations become permanent nodes.
+
+Negative results (a relation the Responder identifies as false /
+hallucinated) are NOT deleted either — flagged as a permanent negative
+relation so the same false connection is not independently re-derived
+later just because the two nodes remain embedding-close.
+
+
+==========================================
+SUMMARIZATION
+==========================================
+
+Summary generation is triggered
+when conversation/history grows.
+
+Instead of loading dozens of facts into context,
+
+the engine creates Summary Nodes.
+
+Summary Nodes become shortcuts through the graph.
+
+Future retrieval can use summaries
+instead of traversing every fact.
+
+
+==========================================
+MODEL NODES
+==========================================
+
+Repeated summaries naturally evolve.
+
+Facts
+
+↓
+
+Relations
+
+↓
+
+Summaries
+
+↓
+
+Models
+
+Models are abstractions of large regions
+of the memory graph.
+
+They are not hardcoded.
+
+They emerge naturally.
+
+REQUIRED SAFEGUARDS (carried over from earlier personality-layer design —
+apply here too, do not treat as solved just because this section is new):
+  - Weight/strength used for Model formation MUST decay over time or
+    include recency weighting. Without decay, early-formed Models
+    accumulate strength fastest purely by having existed longest,
+    crowding out newer, possibly more accurate abstractions
+    (rich-get-richer convergence).
+  - A candidate Model should be checked for compatibility against the
+    engine's immutable core identity before being allowed to become
+    dominant/active — high internal reinforcement alone is not
+    sufficient grounds for a Model to override core-identity behavior.
+
+
+==========================================
+DEPTH RETRIEVAL
+==========================================
+
+Retriever gains depth.
+
+Level 1
+→ Summary
+
+Level 2
+→ Relations
+
+Level 3
+→ Individual facts
+
+Meaning:
+
+The engine can request more detail
+only when needed,
+keeping token usage low.
+
+[OPEN QUESTION — not yet resolved]
+What triggers a request for deeper detail? Likely candidate: the
+Respond-goal VRon receives the Level 1 summary first, and only spawns
+a deeper-retrieval VRon if its own confidence/completeness is
+insufficient at that level — but the concrete trigger for "insufficient"
+still needs to be pinned to something checkable, not left as a vibe.
+
+
+==========================================
+SELF EVOLUTION
+==========================================
+
+Because everything is represented
+as facts and tests,
+
+the engine gradually evolves:
+
+Facts
+
+↓
+
+Relations
+
+↓
+
+Summaries
+
+↓
+
+Models
+
+↓
+
+New Tests
+
+↓
+
+New Facts
+
+The abstraction process never stops.
+
+
+==========================================
+V3 (LOGIC EXECUTION)
+==========================================
+
+Logic execution will be added.
+
+VRons may write tiny JavaScript programs
+for deterministic reasoning.
+
+Examples
+
+- counting
+- addition
+- boolean logic
+- wikipedia retrieval
+- custom skills
+
+Generated functions are stored
+as Logic Nodes.
+
+Future prompts reuse them
+without needing the LLM again.
+
+NOTE (carried over, still applies):
+  A cached Logic Node must be verified against known input/output pairs
+  before being trusted for reuse — determinism guarantees the execution
+  is trustworthy, not that the generated program is correct. Retrieval
+  of a cached Logic Node for reuse should match on exact structure/
+  variables involved, not just embedding similarity, since a
+  semantically similar logical statement is not necessarily a logically
+  equivalent one.
+
+
+==========================================
+DESIGN PRINCIPLES
+==========================================
+
+• Minimal number of engine primitives
+• Context determines behavior
+• Everything becomes facts
+• Memory is graph-based
+• Emergent behavior over handcrafted modules
+• Short-lived VRons
+• Persistent memory only exists in the graph
+• Progressive abstraction:
+  Facts → Relations → Summaries → Models
+• Token efficiency through graph shortcuts
+• One deterministic scheduler
+• Many temporary reasoning cells
+• Rejected/superseded data is quarantined, never silently deleted
+• Depth is unbounded; RATE is bounded (spawn queue + shared energy pool)
+• Nothing is trusted into dominance by reinforcement alone — coherence
+  against the immutable core is a separate, required check
+
+==========================================

@@ -57,13 +57,13 @@ func GetConsolidationPrompt() string {
 	return injectPersonalityName(strings.TrimSpace(rawConsolidationPrompt))
 }
 
-//go:embed introspection.txt
-var rawIntrospectionPrompt string
+//go:embed weaver.txt
+var rawWeaverPrompt string
 
-// GetIntrospectionPrompt returns the introspection base prompt combined with the personality prompt if defined.
-func GetIntrospectionPrompt() string {
+// GetWeaverPrompt returns the weaver base prompt combined with the personality prompt if defined.
+func GetWeaverPrompt() string {
 	pers := strings.TrimSpace(rawPersonalityPrompt)
-	base := injectPersonalityName(strings.TrimSpace(rawIntrospectionPrompt))
+	base := injectPersonalityName(strings.TrimSpace(rawWeaverPrompt))
 	if pers == "" {
 		return base
 	}

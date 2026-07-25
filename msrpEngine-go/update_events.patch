@@ -1,0 +1,65 @@
+--- src/interface/events.go
++++ src/interface/events.go
+@@ -14,6 +14,7 @@
+ 	"msrpengine/src/idle_methods/consolidation"
+ 	"msrpengine/src/idle_methods/context_swapper"
+ 	"msrpengine/src/idle_methods/episode_memory"
+ 	"msrpengine/src/idle_methods/weaver"
++	"msrpengine/src/idle_methods"
+ 	"msrpengine/src/utils"
+ )
+ 
+@@ -118,7 +119,16 @@
+ 				ctx := context.Background()
+ 				activeEps := c.EpisodeMgr.GetActive()
+-				episodes := make([]responder.EpisodeSummary, len(activeEps))
++				
++				// Sort by mind state similarity
++				sort.Slice(activeEps, func(i, j int) bool {
++					d1 := idle_methods.CalculateMindStateDistance(c.GetMindState(), activeEps[i].PeakMindState)
++					d2 := idle_methods.CalculateMindStateDistance(c.GetMindState(), activeEps[j].PeakMindState)
++					return d1 < d2
++				})
++				
++				activeEps = idle_methods.GetEpisodesByCharCount(activeEps, utils.Config.EpisodeMemoryChars, c.Sched.Engine.GetEnergyDrainRate())
++				episodes := make([]responder.EpisodeSummary, len(activeEps))
+ 				var allLinks []contextManager.EpisodeLink
+ 				for i, ep := range activeEps {
+ 					episodes[i] = responder.EpisodeSummary{ID: ep.ID, Facts: ep.Facts, PeakMindState: ep.PeakMindState}
+ 					links := contextManager.GetLinkManager().GetLinksForEpisode(ep.ID)
+@@ -131,7 +141,8 @@
+ 				utils.LogDebug("%s", sysMsg)
+ 				c.InjectSystemMessage(sysMsg)
+ 
+-				reply, usefulEpisodeID, usefulLinkID, falseLinkID, err := c.Resp.RespondProactive(ctx, c.GetMindState(), c.ResponderSTM.GetNoFlags(), episodes, allLinks)
++				interfaceEvents := idle_methods.GetInterfaceEventsByCharCount(c.ResponderSTM.GetNoFlags(), utils.Config.ResponderSTMChars, c.Sched.Engine.GetEnergyDrainRate())
++				reply, usefulEpisodeID, usefulLinkID, falseLinkID, err := c.Resp.RespondProactive(ctx, c.GetMindState(), interfaceEvents, episodes, allLinks)
+ 				if err == nil {
+ 					// Enforce output character limit
+ 					replyRunes := []rune(reply)
+@@ -414,7 +425,16 @@
+ 			// Build the episode summaries from the active episode pool
+ 			activeEps := c.EpisodeMgr.GetActive()
+-			episodes := make([]responder.EpisodeSummary, len(activeEps))
++			
++			// Sort by mind state similarity
++			sort.Slice(activeEps, func(i, j int) bool {
++				d1 := idle_methods.CalculateMindStateDistance(c.GetMindState(), activeEps[i].PeakMindState)
++				d2 := idle_methods.CalculateMindStateDistance(c.GetMindState(), activeEps[j].PeakMindState)
++				return d1 < d2
++			})
++			
++			activeEps = idle_methods.GetEpisodesByCharCount(activeEps, utils.Config.EpisodeMemoryChars, c.Sched.Engine.GetEnergyDrainRate())
++			episodes := make([]responder.EpisodeSummary, len(activeEps))
+ 			var allLinks []contextManager.EpisodeLink
+ 			for i, ep := range activeEps {
+ 				episodes[i] = responder.EpisodeSummary{ID: ep.ID, Facts: ep.Facts, PeakMindState: ep.PeakMindState}
+@@ -424,7 +444,8 @@
+ 			// Respond using responder's clean STM (no stored flags) + active episodes
+ 			// Pass mental energy as a length hint appended to the mindstate string.
+ 			energyHint := fmt.Sprintf("%s|energy:%.0f|drain_rate:%.1f/s", c.GetMindState(), c.Sched.Engine.GetMentalEnergy(), c.Sched.Engine.GetEnergyDrainRate())
+-			reply, usefulEpisodeID, usefulLinkID, falseLinkID, err := c.Resp.Respond(ctx, input, energyHint, c.ResponderSTM.GetNoFlags(), episodes, allLinks)
++			interfaceEvents := idle_methods.GetInterfaceEventsByCharCount(c.ResponderSTM.GetNoFlags(), utils.Config.ResponderSTMChars, c.Sched.Engine.GetEnergyDrainRate())
++			reply, usefulEpisodeID, usefulLinkID, falseLinkID, err := c.Resp.Respond(ctx, input, energyHint, interfaceEvents, episodes, allLinks)
+ 			if err != nil {
+ 				time.Sleep(time.Until(startTime.Add(3 * time.Second)))
