@@ -3,6 +3,7 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
+	"msrpe-vron-go/src/utils"
 	"msrpe-vron-go/src/vron"
 )
 
@@ -34,11 +35,18 @@ func (p *MockLLMProvider) GenerateStructuredOutput(systemPrompt string, context 
 	// 3. For the sake of this skeleton, we will mock a return response where the LLM
 	// decides to spawn a child VRon because it needs more context.
 	
+	// Mocked response
 	mockedLLMJSON := `{
 		"action": "spawn_child",
 		"goal": "Retrieve",
 		"query": "Search memory for why the user hates apples"
 	}`
+
+	// Calculate Sent Character Count
+	sentChars := len(systemPrompt) + len(context.STM) + len(context.LTM) + len(context.PassedContext)
+	recvChars := len(mockedLLMJSON)
+
+	utils.LogDebug("LLM API Call Made | Sent: %d chars | Received: %d chars", sentChars, recvChars)
 
 	var output vron.VRonOutput
 	err := json.Unmarshal([]byte(mockedLLMJSON), &output)

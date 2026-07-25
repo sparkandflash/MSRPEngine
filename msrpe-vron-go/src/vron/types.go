@@ -13,6 +13,10 @@ type VRonContext struct {
 	EnergyLevel     int    // Current Global Energy (0-100)
 	ConsumptionRate int    // Rate at which energy is currently being drained
 	PassedContext   string // Context specifically passed down from a parent VRon
+
+	ThreadCost      int    // Cumulative energy cost of the current VRon chain/thread
+	ThreadDepth     int    // Number of VRons deep in the current chain (vron1->vron2->vron3 = 3)
+	ActiveVRons     int    // Total number of alive/running VRon instances system-wide
 }
 
 // VRonOutput represents the structured JSON decision output by the LLM.

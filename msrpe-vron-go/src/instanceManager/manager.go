@@ -3,6 +3,7 @@ package instanceManager
 import (
 	"context"
 	"fmt"
+	"msrpe-vron-go/src/utils"
 	"msrpe-vron-go/src/vron"
 	"sync"
 	"time"
@@ -19,11 +20,14 @@ const (
 
 // PendingVRon represents a VRon waiting in the queue.
 type PendingVRon struct {
-	ID         string
-	ParentID   string
-	Context    vron.VRonContext
+	ID          string
+	ParentID    string
+	Context     vron.VRonContext
 	IsSuspended bool
-	Instance   vron.VRon
+	Instance    vron.VRon
+
+	ThreadCost  int
+	ThreadDepth int
 }
 
 // Manager controls the lifecycle, rate limits, and energy pool of all VRons.
@@ -73,14 +77,28 @@ func (m *Manager) Spawn(parentID string, vronCtx vron.VRonContext, instance vron
 	energyDeficit := (100 - m.GlobalEnergy) / 10
 	m.TickCooldown = m.BaseTick + time.Duration(energyDeficit*2)*time.Second
 
-	fmt.Printf("[InstanceManager] Spawned VRon. Energy: %d, New Cooldown: %v\n", m.GlobalEnergy, m.TickCooldown)
+	// Calculate Thread Depth and Cost
+	spawnCost := 2
+	childDepth := 1
+	childCost := spawnCost
+
+	if parentID != "" {
+		if parent, exists := m.suspended[parentID]; exists {
+			childDepth = parent.ThreadDepth + 1
+			childCost = parent.ThreadCost + spawnCost
+		}
+	}
 
 	v := &PendingVRon{
-		ID:       fmt.Sprintf("vron-%d", time.Now().UnixNano()),
-		ParentID: parentID,
-		Context:  vronCtx,
-		Instance: instance,
+		ID:          fmt.Sprintf("vron-%d", time.Now().UnixNano()),
+		ParentID:    parentID,
+		Context:     vronCtx,
+		Instance:    instance,
+		ThreadCost:  childCost,
+		ThreadDepth: childDepth,
 	}
+
+	utils.LogDebug("VRon Created | ID: %s | Depth: %d | ThreadCost: %d | Energy: %d | New Cooldown: %v", v.ID, v.ThreadDepth, v.ThreadCost, m.GlobalEnergy, m.TickCooldown)
 
 	m.queue = append(m.queue, v)
 	return nil
@@ -111,6 +129,14 @@ func (m *Manager) RunQueue(ctx context.Context) {
 			// Pop the first pending VRon
 			nextVRon := m.queue[0]
 			m.queue = m.queue[1:]
+			m.activeVRons++
+			
+			// Inject dynamic metrics right before execution
+			nextVRon.Context.EnergyLevel = m.GlobalEnergy
+			nextVRon.Context.ActiveVRons = m.activeVRons
+			nextVRon.Context.ThreadCost = nextVRon.ThreadCost
+			nextVRon.Context.ThreadDepth = nextVRon.ThreadDepth
+
 			m.mu.Unlock()
 
 			// Execute the VRon (this would block, representing LLM time)
@@ -119,7 +145,7 @@ func (m *Manager) RunQueue(ctx context.Context) {
 			// When the child finishes, we pull it from suspended and re-queue it.
 			
 			// Mock execution for skeleton:
-			fmt.Printf("[InstanceManager] Executing VRon %s\n", nextVRon.ID)
+			utils.LogDebug("Executing VRon %s | Depth: %d | Cost: %d | Active: %d", nextVRon.ID, nextVRon.ThreadDepth, nextVRon.ThreadCost, nextVRon.Context.ActiveVRons)
 			
 			// Simulate Energy Burn during execution
 			m.mu.Lock()
@@ -127,6 +153,7 @@ func (m *Manager) RunQueue(ctx context.Context) {
 			if m.GlobalEnergy < 0 {
 				m.GlobalEnergy = 0
 			}
+			m.activeVRons--
 			m.mu.Unlock()
 		}
 	}

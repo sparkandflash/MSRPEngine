@@ -3,6 +3,7 @@ package ruleEngine
 import (
 	"fmt"
 	"msrpe-vron-go/src/instanceManager"
+	"msrpe-vron-go/src/utils"
 	"msrpe-vron-go/src/vron"
 )
 
@@ -15,7 +16,7 @@ type ReflexDispatcher struct {
 
 // OnUserMessage is a reflex triggered when the interface receives a chat message.
 func (r *ReflexDispatcher) OnUserMessage(message string) {
-	fmt.Printf("[RuleEngine] Reflex Triggered: User Message Received.\n")
+	utils.LogInfo("[RuleEngine] Reflex Triggered: User Message Received.")
 
 	// Assemble the initial context (STM)
 	ctx := vron.VRonContext{
@@ -29,6 +30,6 @@ func (r *ReflexDispatcher) OnUserMessage(message string) {
 	// Spawn the Root VRon. Notice we pass an empty parentID because this is a root.
 	err := r.Manager.Spawn("", ctx, nil)
 	if err != nil {
-		fmt.Printf("[RuleEngine] Reflex failed to spawn VRon: %v\n", err)
+		utils.LogInfo("[RuleEngine] Reflex failed to spawn VRon: %v", err)
 	}
 }
