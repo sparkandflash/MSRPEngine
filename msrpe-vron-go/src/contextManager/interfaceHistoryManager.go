@@ -1,6 +1,7 @@
 package contextManager
 
 import (
+	"encoding/json"
 	"fmt"
 	"msrpe-vron-go/src/utils"
 	"os"
@@ -12,10 +13,25 @@ type InterfaceHistoryManager struct {
 	FilePath string
 }
 
+type HistoryEntry struct {
+	Timestamp string `json:"timestamp"`
+	Sender    string `json:"sender"`
+	Message   string `json:"message"`
+}
+
 // Append writes a single line (message, system event) to the interface history log.
 func (ihm *InterfaceHistoryManager) Append(sender string, message string) error {
-	timestamp := time.Now().Format(time.RFC3339)
-	logEntry := fmt.Sprintf("[%s] %s: %s\n", timestamp, sender, message)
+	entry := HistoryEntry{
+		Timestamp: time.Now().Format(time.RFC3339),
+		Sender:    sender,
+		Message:   message,
+	}
+	
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("failed to marshal history entry: %v", err)
+	}
+	logEntry := string(b) + "\n"
 
 	f, err := os.OpenFile(ihm.FilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {

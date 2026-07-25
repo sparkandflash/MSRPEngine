@@ -10,7 +10,8 @@ import (
 type VRonContext struct {
 	STM             string // Short-Term Memory (Interface History)
 	LTM             string // Long-Term Memory (Relevant Episodes from graph)
-	EnergyLevel     int    // Current Global Energy (0-100)
+	EnergyLevel     int    // Current Global Energy
+	MaxEnergy       int    // Maximum capacity of the Global Energy pool
 	ConsumptionRate int    // Rate at which energy is currently being drained
 	PassedContext   string // Context specifically passed down from a parent VRon
 

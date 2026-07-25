@@ -52,7 +52,7 @@ func NewContextManager() (*ContextManager, error) {
 	}
 
 	histManager := &InterfaceHistoryManager{
-		FilePath: filepath.Join(ContextDir, "interface_history.json"),
+		FilePath: filepath.Join(ContextDir, "interface_history.jsonl"),
 	}
 
 	return &ContextManager{

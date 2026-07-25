@@ -1,9 +1,9 @@
 package vron
 
-// Character limits for VRon components
-const (
-	MaxVRonResponseLength = 2000
-	MaxUserMessageLength  = 2000
+// Character limits for VRon components (set dynamically by envconfig at boot)
+var (
+	MaxVRonResponseLength int
+	MaxUserMessageLength  int
 )
 
 // SystemMessage defines standard system-level protocols and formats.

@@ -1,0 +1,17 @@
+# VRON-V1 Rule Engine Configuration
+# Defines the physiological energy costs of the engine as RATIOS of the system max capacities.
+# Absolute capacities (Max Energy, Base Tick) are defined in .env.
+
+energy_drain_ratios:
+  spawn_cost: 0.02          # 2% of MaxEnergy
+  execute_cost: 0.01        # 1% of MaxEnergy
+  passive_cost_per_vron: 0.01 # 1% of MaxEnergy per tick
+
+energy_regen_ratios:
+  active: 0.01              # Regens 1% of MaxEnergy per tick
+  user_idle: 0.02           # Regens 2% of MaxEnergy per tick
+  hibernation: 0.05         # Regens 5% of MaxEnergy per tick
+
+scheduler_ratios:
+  hibernation_sleep_multiplier: 2.5 # Sleep = 2.5 * BaseTick
+  cooldown_penalty_factor: 0.5      # Penalty per 10% deficit relative to BaseTick
