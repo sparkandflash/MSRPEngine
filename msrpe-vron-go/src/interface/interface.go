@@ -44,10 +44,11 @@ func NewAppCore() (*AppCore, error) {
 	if err != nil {
 		return nil, err
 	}
-	instMgr.StartMonitor(context.Background())
+	instMgr.StartMonitor(context.Background(), ctxMgr.HistoryManager)
 
 	// 5. Wire them together (The Event Highway)
 	ruleEng.Manager = instMgr
+	ruleEng.Context = ctxMgr
 	instMgr.CostProvider = ruleEng
 
 	// 10. Wire the OnRespond callback so VRon responses print to the CLI
@@ -73,6 +74,11 @@ func NewAppCore() (*AppCore, error) {
 		if err := ctxMgr.SaveEpisode(content, epType, config.LTMDefaultWeight); err != nil {
 			utils.LogDebug("Failed to save episode: %v", err)
 		}
+	}
+
+	// 13. Wire OnSubconsciousTrigger - called during idle loops to spawn spontaneous thought
+	instMgr.OnSubconsciousTrigger = func() {
+		ruleEng.OnSubconsciousTrigger()
 	}
 
 	return &AppCore{

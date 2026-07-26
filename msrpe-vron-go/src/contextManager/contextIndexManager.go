@@ -88,6 +88,14 @@ func (cim *ContextIndexManager) QueryEpisodes(query string, maxResults int) ([]E
 		return nil, fmt.Errorf("episodes collection not found")
 	}
 
+	count := col.Count()
+	if count == 0 {
+		return []Episode{}, nil // Empty collection
+	}
+	if maxResults > count {
+		maxResults = count
+	}
+
 	results, err := col.Query(context.Background(), query, maxResults, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("chromem-go query failed: %w", err)

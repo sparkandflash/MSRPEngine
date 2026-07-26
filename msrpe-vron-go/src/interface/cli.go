@@ -3,19 +3,19 @@ package interfaceUI
 import (
 	"fmt"
 	"strings"
+
+	"msrpe-vron-go/src/utils"
 )
 
-// PrintUserPrompt prints the standard V2 '>> ' prompt.
-func PrintUserPrompt() {
-	fmt.Print("\n\033[32m>>\033[0m ")
-}
+// PrintUserPrompt is now handled by Readline configuration, but we keep this signature just in case.
+func PrintUserPrompt() {}
 
 // PrintVRonResponse prints a message originating from a VRon or the System.
 func PrintVRonResponse(sender string, message string) {
-	fmt.Printf("\n\033[35m[%s]\033[0m %s\n", strings.ToUpper(sender), message)
+	fmt.Fprintf(utils.Output, "\033[34m[%s] %s\033[0m\n", strings.ToUpper(sender), message)
 }
 
 // PrintSystemAlert prints a system-level alert.
 func PrintSystemAlert(message string) {
-	fmt.Printf("\n\033[33m[SYSTEM ALERT]\033[0m %s\n", message)
+	fmt.Fprintf(utils.Output, "\033[90m[SYSTEM ALERT] %s\033[0m\n", message)
 }

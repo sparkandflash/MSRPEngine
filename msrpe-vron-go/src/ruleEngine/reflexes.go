@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+	"msrpe-vron-go/src/contextManager"
 	"msrpe-vron-go/src/instanceManager"
 	"msrpe-vron-go/src/utils"
 	"msrpe-vron-go/src/vron"
@@ -31,6 +32,7 @@ type RuleConfig struct {
 // ReflexDispatcher acts as the baseline nervous system.
 type ReflexDispatcher struct {
 	Manager *instanceManager.Manager
+	Context *contextManager.ContextManager
 
 	// Ratios
 	SpawnCostRatio          float64
@@ -117,12 +119,23 @@ func (r *ReflexDispatcher) OnUserMessage(message string) {
 	utils.LogInfo("[RuleEngine] Reflex Triggered: User Message Received.")
 	r.Manager.RecordUserActivity()
 
+	// Determine STMCapacityPct and StaleContext (we'll just use HistoryManager)
+	stmContext := ""
+	if r.Context != nil && r.Context.HistoryManager != nil {
+		// EnvConfig max length is roughly 2000 for UserMessageChars, we'll use a fixed large limit for now
+		stmContext = r.Context.HistoryManager.ReadRecentContext(4000)
+	}
+	if stmContext == "" {
+		stmContext = fmt.Sprintf("User says: %s", message) // Fallback
+	}
+
 	// Assemble the initial context (STM)
 	ctx := vron.VRonContext{
-		STM:             fmt.Sprintf("User says: %s", message),
-		LTM:             "", // Root VRon must spawn a child to retrieve this if needed
-		EnergyLevel:     r.Manager.GetEnergy(),          // BUG FIX #1: thread-safe read
-		ConsumptionRate: r.Manager.GetConsumptionRate(), // BUG FIX #1: thread-safe read
+		STM:             stmContext,
+		LTM:             "", 
+		EnergyLevel:     r.Manager.GetEnergy(),          
+		ConsumptionRate: r.Manager.GetConsumptionRate(), 
+		Goal:            "Respond to the User",
 		PassedContext:   "",
 	}
 
@@ -130,5 +143,33 @@ func (r *ReflexDispatcher) OnUserMessage(message string) {
 	err := r.Manager.Spawn("", ctx, nil)
 	if err != nil {
 		utils.LogInfo("[RuleEngine] Reflex failed to spawn VRon: %v", err)
+	}
+}
+
+// OnSubconsciousTrigger is a reflex triggered periodically during idle states.
+// It spawns an empty VRon that only has the recent STM and a subconscious prompt.
+func (r *ReflexDispatcher) OnSubconsciousTrigger() {
+	utils.LogInfo("[RuleEngine] Subconscious Trigger Fired.")
+	
+	stmContext := ""
+	if r.Context != nil && r.Context.HistoryManager != nil {
+		stmContext = r.Context.HistoryManager.ReadRecentContext(4000)
+	}
+
+	// Inject the subconscious cue directly into the STM block for this specific VRon
+	stmContext += "\n[System]: You are idle. The environment is quiet. Do you have any internal questions or anomalies to process?"
+
+	ctx := vron.VRonContext{
+		STM:             stmContext,
+		LTM:             "", 
+		EnergyLevel:     r.Manager.GetEnergy(),          
+		ConsumptionRate: r.Manager.GetConsumptionRate(), 
+		Goal:            "Process the environment",
+		PassedContext:   "", // Leave empty for root VRons
+	}
+
+	err := r.Manager.Spawn("", ctx, nil)
+	if err != nil {
+		utils.LogInfo("[RuleEngine] Failed to spawn subconscious VRon: %v", err)
 	}
 }

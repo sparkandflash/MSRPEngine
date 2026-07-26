@@ -3,6 +3,7 @@ package instanceManager
 import (
 	"context"
 	"fmt"
+	"msrpe-vron-go/src/contextManager"
 	"msrpe-vron-go/src/envconfig"
 	"msrpe-vron-go/src/providers"
 	"msrpe-vron-go/src/utils"
@@ -49,10 +50,11 @@ type PendingVRon struct {
 // Manager controls the lifecycle, rate limits, and energy pool of all VRons.
 type Manager struct {
 	mu           sync.Mutex
-	GlobalEnergy int
-	MaxEnergy    int
-	TickCooldown time.Duration
-	BaseTick     time.Duration
+	GlobalEnergy        int
+	MaxEnergy           int
+	SerotoninLevel      int // Bipolar Mind Score (-100 to +100)
+	BaseTick            time.Duration
+	TickCooldown        time.Duration
 	SleepMode    SleepMode
 	Provider     providers.InferenceProvider // The live LLM backend
 	CostProvider CostProvider                // Injected by Rule Engine
@@ -66,6 +68,7 @@ type Manager struct {
 	OnRespond     func(response string)          // Called when a VRon returns "respond"
 	OnRetrieveLTM func(query string) string      // Called before VRon executes to populate LTM
 	OnSaveMemory  func(content, epType string)   // Called when a VRon returns "update_memory"
+	OnSubconsciousTrigger func()                 // Called when the engine is idle and has energy to spawn spontaneous thoughts
 
 	queue          []*PendingVRon
 	priorityQueue  []*PendingVRon
@@ -103,6 +106,7 @@ func NewManager() (*Manager, error) {
 	return &Manager{
 		GlobalEnergy:        config.MaxGlobalEnergy,
 		MaxEnergy:           config.MaxGlobalEnergy,
+		SerotoninLevel:      0, // Start neutral
 		BaseTick:            config.BaseTickRateMs,
 		TickCooldown:        config.BaseTickRateMs,
 		SleepMode:           ModeActive,
@@ -127,7 +131,7 @@ func (m *Manager) RecordUserActivity() {
 }
 
 // StartMonitor begins tracking idle state in the background.
-func (m *Manager) StartMonitor(ctx context.Context) {
+func (m *Manager) StartMonitor(ctx context.Context, historyMgr *contextManager.InterfaceHistoryManager) {
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
@@ -145,17 +149,39 @@ func (m *Manager) StartMonitor(ctx context.Context) {
 					if m.SleepMode != ModeHibernation {
 						utils.LogInfo("[InstanceManager] Engine shifting to Hibernation (Idle OR Exhausted)")
 						m.SleepMode = ModeHibernation
+						if historyMgr != nil {
+							_ = historyMgr.Append("System", "Biological shift: Hibernation Mode activated due to inactivity or energy exhaustion. Metabolic rate is reduced.")
+						}
 					}
 				} else if idleDuration >= m.UserIdleTimeout {
 					if m.SleepMode != ModeUserIdle && m.SleepMode != ModeHibernation {
 						utils.LogInfo("[InstanceManager] Engine shifting to UserIdle")
 						m.SleepMode = ModeUserIdle
+						if historyMgr != nil {
+							_ = historyMgr.Append("System", "Biological shift: User Idle Mode activated. The environment is quiet.")
+						}
+					}
+					// Subconscious thought generation during UserIdle (if we have energy)
+					if m.SleepMode == ModeUserIdle && m.OnSubconsciousTrigger != nil && !isExhausted {
+						m.OnSubconsciousTrigger()
 					}
 				}
 				m.mu.Unlock()
 			}
 		}
 	}()
+}
+
+// adjustSerotonin safely modifies the SerotoninLevel, capping between -100 and +100.
+func (m *Manager) adjustSerotonin(delta int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.SerotoninLevel += delta
+	if m.SerotoninLevel > 100 {
+		m.SerotoninLevel = 100
+	} else if m.SerotoninLevel < -100 {
+		m.SerotoninLevel = -100
+	}
 }
 
 // Spawn enqueues a new VRon for execution. It applies biological backpressure.
@@ -252,19 +278,27 @@ func (m *Manager) RunQueue(ctx context.Context) {
 
 			m.mu.Lock()
 			
-			// Passive Energy Drain: Every VRon staying alive (queued, suspended, or active)
-			// consumes energy per tick. This prevents unbounded suspension hoarding.
-			totalAlive := len(m.queue) + len(m.priorityQueue) + len(m.suspended) + m.activeVRons
-			if totalAlive > 0 && m.GlobalEnergy > 0 {
-				passiveCost := int(float64(m.MaxEnergy) * 0.01)
+			// Passive energy drain & Serotonin Homeostasis (decay towards 0)
+			alive := len(m.priorityQueue) + m.activeVRons
+			if alive > 0 {
+				drain := 0
 				if m.CostProvider != nil {
-					passiveCost = int(float64(m.MaxEnergy) * m.CostProvider.GetPassiveCostRatio())
+					drain = int(float64(m.MaxEnergy) * m.CostProvider.GetPassiveCostRatio() * float64(alive))
+				} else {
+					drain = alive // fallback
 				}
-				m.GlobalEnergy -= (totalAlive * passiveCost)
+				m.GlobalEnergy -= drain
 				if m.GlobalEnergy < 0 {
 					m.GlobalEnergy = 0
 				}
-				utils.LogDebug("[Energy] Passive drain for %d alive VRons (-%d) | Energy: %d", totalAlive, (totalAlive * passiveCost), m.GlobalEnergy)
+				utils.LogDebug("[Energy] Passive drain for %d alive VRons (-%d) | Energy: %d", alive, drain, m.GlobalEnergy)
+			}
+			
+			// Serotonin Homeostasis: pull back towards 0 over time
+			if m.SerotoninLevel > 0 {
+				m.SerotoninLevel--
+			} else if m.SerotoninLevel < 0 {
+				m.SerotoninLevel++
 			}
 
 			// Sweep for Decayed VRons (Biological Decay)
@@ -386,9 +420,10 @@ func (m *Manager) RunQueue(ctx context.Context) {
 
 				// Inject dynamic metrics right before execution
 				nextVRon.Context.EnergyLevel = m.GlobalEnergy
+				nextVRon.Context.SerotoninLevel = m.SerotoninLevel
 
 				// Detailed VRon logging (In)
-				utils.LogDebug("[LLM-IN] VRon %s | Action: Executing | STM Chars: %d | LTM Chars: %d | Depth: %d", nextVRon.ID, len(nextVRon.Context.STM), len(nextVRon.Context.LTM), nextVRon.ThreadDepth)
+				utils.LogDebug("[LLM-IN] VRon %s | Action: Executing | STM Chars: %d | LTM Chars: %d | Depth: %d | SE: %d", nextVRon.ID, len(nextVRon.Context.STM), len(nextVRon.Context.LTM), nextVRon.ThreadDepth, nextVRon.Context.SerotoninLevel)
 
 				// Inject LTM via callback right before LLM call
 				if m.OnRetrieveLTM != nil {
@@ -398,17 +433,19 @@ func (m *Manager) RunQueue(ctx context.Context) {
 				output, err := m.Provider.GenerateStructured(ctx, vron.GetMasterVRonPrompt(), nextVRon.Context)
 				if err != nil {
 					utils.LogDebug("[LLM-FAIL] VRon %s execution failed: %v", nextVRon.ID, err)
+					m.adjustSerotonin(-10) // Negative reinforcement for failing to execute
 					return
 				}
 
 				// Detailed VRon logging (Out)
-				utils.LogDebug("[LLM-OUT] VRon %s | Action: '%s' | Response Chars: %d", nextVRon.ID, output.Action, len(output.Query))
+				utils.LogDebug("[LLM-OUT] VRon %s | Action: '%s' | Confidence: %d | Response Chars: %d", nextVRon.ID, output.Action, output.Confidence, len(output.Query))
 
 				utils.LogDebug("VRon %s → Action: %s | Goal: %s", nextVRon.ID, output.Action, output.Goal)
 
 				// Dispatch based on VRon decision
 				switch output.Action {
 				case "respond":
+					m.adjustSerotonin(10) // Positive reinforcement for successful interaction
 					// Route response back to interface
 					if m.OnRespond != nil {
 						m.OnRespond(output.Query)
@@ -417,6 +454,7 @@ func (m *Manager) RunQueue(ctx context.Context) {
 					m.resumeParent(nextVRon.ParentID, output.Query, nextVRon.ThreadCost)
 
 				case "spawn_child":
+					m.adjustSerotonin(5) // Reaching/Instinctual drive 
 					// Suspend parent, enqueue child
 					m.mu.Lock()
 					m.suspended[nextVRon.ID] = nextVRon
@@ -424,6 +462,7 @@ func (m *Manager) RunQueue(ctx context.Context) {
 
 					childCtx := vron.VRonContext{
 						PassedContext: output.Query,
+						Goal:          output.Goal,
 						STM:          nextVRon.Context.STM,
 					}
 					err := m.Spawn(nextVRon.ID, childCtx, nil)
@@ -433,20 +472,37 @@ func (m *Manager) RunQueue(ctx context.Context) {
 						m.mu.Lock()
 						delete(m.suspended, nextVRon.ID)
 						m.mu.Unlock()
+						m.resumeParent(nextVRon.ParentID, "ERROR: child spawn failed", nextVRon.ThreadCost)
 					}
 
 				case "update_memory":
-					if m.OnSaveMemory != nil {
-						m.OnSaveMemory(output.Query, "interaction")
+					threshold := 80
+					if nextVRon.Context.SerotoninLevel < 0 {
+						threshold = 95
 					}
-					// Parent resume: memory write is terminal for this VRon
-					m.resumeParent(nextVRon.ParentID, output.Query, nextVRon.ThreadCost)
+
+					if output.Confidence < threshold {
+						utils.LogDebug("[InstanceManager] VRon %s attempted update_memory with low confidence (%d < %d). Blocked.", nextVRon.ID, output.Confidence, threshold)
+						m.adjustSerotonin(-10) // Severe penalty for attempting to hallucinate memory
+						m.resumeParent(nextVRon.ParentID, fmt.Sprintf("FAIL: Confidence too low to commit fact. Required: %d", threshold), nextVRon.ThreadCost)
+						return
+					}
+
+					m.adjustSerotonin(15) // High reward for successfully extracting and committing knowledge
+					if m.OnSaveMemory != nil {
+						m.OnSaveMemory(output.Query, "fact")
+					}
+					m.resumeParent(nextVRon.ParentID, "Memory successfully updated.", nextVRon.ThreadCost)
 
 				case "test_result":
-					utils.LogInfo("[InstanceManager] VRon %s → test_result: %s", nextVRon.ID, output.Query)
-					// Parent resume: test result is terminal, pass result up
+					if output.Query == "FAIL" || output.Query == "UNKNOWN" {
+						m.adjustSerotonin(-10) // Agitation/Frustration
+					} else {
+						m.adjustSerotonin(10) // Satisfaction
+					}
 					m.resumeParent(nextVRon.ParentID, output.Query, nextVRon.ThreadCost)
-					// ADDITION: Also route to OnSaveMemory if it's a test_result
+					
+					// Also route to OnSaveMemory if it's a test_result
 					if m.OnSaveMemory != nil {
 						m.OnSaveMemory(output.Query, "test_result")
 					}

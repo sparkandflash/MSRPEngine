@@ -11,9 +11,11 @@ type VRonContext struct {
 	STM             string // Short-Term Memory (Interface History)
 	LTM             string // Long-Term Memory (Relevant Episodes from graph)
 	EnergyLevel     int    // Current Global Energy
+	SerotoninLevel  int    // Biological drive (-100 to 100)
 	MaxEnergy       int    // Maximum capacity of the Global Energy pool
 	ConsumptionRate int    // Rate at which energy is currently being drained
 	PassedContext   string // Context specifically passed down from a parent VRon
+	Goal            string // The current high-level goal of this VRon
 
 	ThreadCost      int    // Cumulative energy cost of the current VRon chain/thread
 	ThreadDepth     int    // Number of VRons deep in the current chain (vron1->vron2->vron3 = 3)
@@ -23,9 +25,10 @@ type VRonContext struct {
 // VRonOutput represents the structured JSON decision output by the LLM.
 // It maps directly to OpenAI/Gemini Native Structured Output JSON Schema.
 type VRonOutput struct {
-	Action string `json:"action"` // "respond", "spawn_child", "update_memory", "test_result"
-	Goal   string `json:"goal"`   // The goal assigned to the child VRon, or self
-	Query  string `json:"query"`  // The specific query, test, or response payload
+	Action     string `json:"action"`     // "respond", "spawn_child", "update_memory", "test_result"
+	Goal       string `json:"goal"`       // The goal assigned to the child VRon, or self
+	Query      string `json:"query"`      // The specific query, test, or response payload
+	Confidence int    `json:"confidence"` // 0-100 rating of certainty
 }
 
 // VRon defines the ephemeral reasoning cell.

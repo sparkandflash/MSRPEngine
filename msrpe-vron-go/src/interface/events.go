@@ -1,26 +1,40 @@
 package interfaceUI
 
 import (
-	"bufio"
 	"context"
-	"os"
 	"strings"
+
+	"github.com/chzyer/readline"
+	"msrpe-vron-go/src/utils"
 )
 
 // RunLoop starts the interactive terminal session.
 func (app *AppCore) RunLoop(ctx context.Context) {
-	scanner := bufio.NewScanner(os.Stdin)
+	rl, err := readline.NewEx(&readline.Config{
+		Prompt:          "\033[97m>>\033[0m ",
+		HistoryFile:     "Context/cli_history.tmp",
+		InterruptPrompt: "^C",
+		EOFPrompt:       "exit",
+	})
+	if err != nil {
+		PrintSystemAlert("Failed to initialize readline. Falling back to simple scan.")
+		return
+	}
+	defer rl.Close()
+
+	// Redirect all standard printing to readline so it doesn't interrupt typing
+	utils.SetOutput(rl.Stdout())
 
 	PrintSystemAlert("Engine Ready. Type a message below.")
 
 	for {
-		PrintUserPrompt()
-
 		// Read CLI input
-		if !scanner.Scan() {
+		line, err := rl.Readline()
+		if err != nil { // EOF or interrupt
 			break
 		}
-		input := strings.TrimSpace(scanner.Text())
+
+		input := strings.TrimSpace(line)
 
 		if input == "" {
 			continue
@@ -31,7 +45,7 @@ func (app *AppCore) RunLoop(ctx context.Context) {
 		}
 
 		// 1. Log to Interface History (STM)
-		err := app.Context.HistoryManager.Append("User", input)
+		err = app.Context.HistoryManager.Append("User", input)
 		if err != nil {
 			PrintSystemAlert("Warning: Failed to log history: " + err.Error())
 		}

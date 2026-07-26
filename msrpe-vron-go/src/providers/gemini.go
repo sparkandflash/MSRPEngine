@@ -128,8 +128,9 @@ func (p *GeminiInferenceProvider) GenerateStructured(ctx context.Context, system
 					},
 					"goal":  {Type: "string"},
 					"query": {Type: "string"},
+					"confidence": {Type: "integer"},
 				},
-				Required: []string{"action", "goal", "query"},
+				Required: []string{"action", "goal", "query", "confidence"},
 			},
 		},
 	}

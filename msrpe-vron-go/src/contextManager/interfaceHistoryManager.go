@@ -1,10 +1,12 @@
 package contextManager
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"msrpe-vron-go/src/utils"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -46,4 +48,44 @@ func (ihm *InterfaceHistoryManager) Append(sender string, message string) error 
 
 	utils.LogDebug("Appended %d bytes to %s", n, ihm.FilePath)
 	return nil
+}
+
+// ReadRecentContext reads the JSONL history file from bottom to top,
+// accumulating formatted strings until maxChars is reached, returning the STM block.
+func (ihm *InterfaceHistoryManager) ReadRecentContext(maxChars int) string {
+	f, err := os.Open(ihm.FilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "" // No history yet
+		}
+		utils.LogDebug("Failed to open history for read: %v", err)
+		return ""
+	}
+	defer f.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	var finalBlocks []string
+	totalChars := 0
+
+	// Iterate backwards (most recent first)
+	for i := len(lines) - 1; i >= 0; i-- {
+		var entry HistoryEntry
+		if err := json.Unmarshal([]byte(lines[i]), &entry); err != nil {
+			continue // skip malformed
+		}
+		
+		formatted := fmt.Sprintf("[%s]: %s\n", entry.Sender, entry.Message)
+		if totalChars+len(formatted) > maxChars {
+			break
+		}
+		finalBlocks = append([]string{formatted}, finalBlocks...) // Prepend to maintain chronological order
+		totalChars += len(formatted)
+	}
+
+	return strings.Join(finalBlocks, "")
 }

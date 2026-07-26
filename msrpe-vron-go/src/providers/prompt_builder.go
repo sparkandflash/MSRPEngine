@@ -9,7 +9,9 @@ import (
 // This is the exact payload the LLM sees as its "current situation."
 func buildUserPrompt(ctx vron.VRonContext) string {
 	return fmt.Sprintf(`--- CURRENT STATE ---
+Current Goal: %s
 Energy Level: %d / %d
+Serotonin Level (SE): %d
 Consumption Rate: %d / tick
 Active VRons: %d
 Thread Depth: %d
@@ -25,8 +27,10 @@ Thread Cost: %d
 %s
 
 Decide your action.`,
+		ctx.Goal,
 		ctx.EnergyLevel,
 		ctx.MaxEnergy,
+		ctx.SerotoninLevel,
 		ctx.ConsumptionRate,
 		ctx.ActiveVRons,
 		ctx.ThreadDepth,
