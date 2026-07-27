@@ -7,11 +7,13 @@ import (
 	"msrpe-vron-go/src/utils"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
 // InterfaceHistoryManager handles the rolling flat-file log of all raw I/O (STM).
 type InterfaceHistoryManager struct {
+	mu       sync.Mutex
 	FilePath string
 }
 
@@ -23,12 +25,15 @@ type HistoryEntry struct {
 
 // Append writes a single line (message, system event) to the interface history log.
 func (ihm *InterfaceHistoryManager) Append(sender string, message string) error {
+	ihm.mu.Lock()
+	defer ihm.mu.Unlock()
+
 	entry := HistoryEntry{
 		Timestamp: time.Now().Format(time.RFC3339),
 		Sender:    sender,
 		Message:   message,
 	}
-	
+
 	b, err := json.Marshal(entry)
 	if err != nil {
 		return fmt.Errorf("failed to marshal history entry: %v", err)
@@ -53,10 +58,13 @@ func (ihm *InterfaceHistoryManager) Append(sender string, message string) error 
 // ReadRecentContext reads the JSONL history file from bottom to top,
 // accumulating formatted strings until maxChars is reached, returning the STM block.
 func (ihm *InterfaceHistoryManager) ReadRecentContext(maxChars int) string {
+	ihm.mu.Lock()
+	defer ihm.mu.Unlock()
+
 	f, err := os.Open(ihm.FilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "" // No history yet
+			return ""
 		}
 		utils.LogDebug("Failed to open history for read: %v", err)
 		return ""
@@ -72,18 +80,17 @@ func (ihm *InterfaceHistoryManager) ReadRecentContext(maxChars int) string {
 	var finalBlocks []string
 	totalChars := 0
 
-	// Iterate backwards (most recent first)
 	for i := len(lines) - 1; i >= 0; i-- {
 		var entry HistoryEntry
 		if err := json.Unmarshal([]byte(lines[i]), &entry); err != nil {
-			continue // skip malformed
+			continue
 		}
-		
+
 		formatted := fmt.Sprintf("[%s]: %s\n", entry.Sender, entry.Message)
 		if totalChars+len(formatted) > maxChars {
 			break
 		}
-		finalBlocks = append([]string{formatted}, finalBlocks...) // Prepend to maintain chronological order
+		finalBlocks = append([]string{formatted}, finalBlocks...)
 		totalChars += len(formatted)
 	}
 

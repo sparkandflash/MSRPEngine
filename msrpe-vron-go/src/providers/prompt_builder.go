@@ -6,10 +6,15 @@ import (
 )
 
 // buildUserPrompt constructs the formatted user-turn string from a VRonContext.
-// This is the exact payload the LLM sees as its "current situation."
+// This is the exact payload the LLM sees as its current situation.
 func buildUserPrompt(ctx vron.VRonContext) string {
+	methodStr := string(ctx.Method)
+	if methodStr == "" {
+		methodStr = ctx.Goal
+	}
+
 	return fmt.Sprintf(`--- CURRENT STATE ---
-Current Goal: %s
+Assigned Method: %s
 Energy Level: %d / %d
 Serotonin Level (SE): %d
 Consumption Rate: %d / tick
@@ -23,11 +28,11 @@ Thread Cost: %d
 --- LONG-TERM MEMORY (Recalled Episodes) ---
 %s
 
---- PASSED CONTEXT (From Parent VRon) ---
+--- PASSED CONTEXT (From Prior VRon / Scheduler) ---
 %s
 
-Decide your action.`,
-		ctx.Goal,
+Execute assigned method '%s' strictly.`,
+		methodStr,
 		ctx.EnergyLevel,
 		ctx.MaxEnergy,
 		ctx.SerotoninLevel,
@@ -38,5 +43,6 @@ Decide your action.`,
 		ctx.STM,
 		ctx.LTM,
 		ctx.PassedContext,
+		methodStr,
 	)
 }

@@ -22,6 +22,12 @@ func (app *AppCore) RunLoop(ctx context.Context) {
 	}
 	defer rl.Close()
 
+	// Watch context cancellation and close readline so blocking Readline() returns
+	go func() {
+		<-ctx.Done()
+		rl.Close()
+	}()
+
 	// Redirect all standard printing to readline so it doesn't interrupt typing
 	utils.SetOutput(rl.Stdout())
 
@@ -30,7 +36,7 @@ func (app *AppCore) RunLoop(ctx context.Context) {
 	for {
 		// Read CLI input
 		line, err := rl.Readline()
-		if err != nil { // EOF or interrupt
+		if err != nil { // EOF or interrupt or context cancel
 			break
 		}
 
@@ -50,7 +56,11 @@ func (app *AppCore) RunLoop(ctx context.Context) {
 			PrintSystemAlert("Warning: Failed to log history: " + err.Error())
 		}
 
-		// 2. Route to Rule Engine (Reflex)
-		app.RuleEngine.OnUserMessage(input)
+		// 2. Route via Scheduler (or Reflex Engine fallback)
+		if app.Scheduler != nil {
+			_ = app.Scheduler.TriggerUserMessage(input)
+		} else {
+			app.RuleEngine.OnUserMessage(input)
+		}
 	}
 }

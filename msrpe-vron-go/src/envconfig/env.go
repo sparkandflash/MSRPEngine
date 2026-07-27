@@ -36,6 +36,12 @@ type EnvConfig struct {
 	BaseLifetime           time.Duration
 	UserIdleTimeout        time.Duration
 	HibernationTimeout     time.Duration
+	
+	// VRon Cell Pool & Context Limits
+	VRonPoolMaxCapacity    int
+	VRonPoolRefillRate     time.Duration
+	ContextSwapInterval    time.Duration
+	MaxContextChars        int
 }
 
 var (
@@ -72,9 +78,13 @@ func Load() *EnvConfig {
 		LTMMaxResults:          parseInt("LTM_MAX_RESULTS", 5),
 		LTMDefaultWeight:       parseInt("LTM_DEFAULT_WEIGHT", 70),
 		BaseLifetime:           time.Duration(parseInt("VRON_BASE_LIFETIME_SEC", 300)) * time.Second,
-			UserIdleTimeout:        time.Duration(parseInt("USER_IDLE_TIMEOUT_MINUTES", 5)) * time.Minute,
-			HibernationTimeout:     time.Duration(parseInt("ENGINE_HIBERNATION_TIMEOUT_MINUTES", 15)) * time.Minute,
-		}
+		UserIdleTimeout:        time.Duration(parseInt("USER_IDLE_TIMEOUT_MINUTES", 5)) * time.Minute,
+		HibernationTimeout:     time.Duration(parseInt("ENGINE_HIBERNATION_TIMEOUT_MINUTES", 15)) * time.Minute,
+		VRonPoolMaxCapacity:    parseInt("VRON_POOL_MAX_CAPACITY", 12),
+		VRonPoolRefillRate:     time.Duration(parseInt("VRON_POOL_REFILL_RATE_SEC", 60)) * time.Second,
+		ContextSwapInterval:    time.Duration(parseInt("CONTEXT_SWAP_INTERVAL_SEC", 300)) * time.Second,
+		MaxContextChars:        parseInt("VRON_MAX_CONTEXT_CHARS", 10000),
+	}
 	})
 
 	return configInstance

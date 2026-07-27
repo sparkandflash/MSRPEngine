@@ -3,6 +3,7 @@ package ruleEngine
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 	"msrpe-vron-go/src/contextManager"
@@ -35,21 +36,21 @@ type ReflexDispatcher struct {
 	Context *contextManager.ContextManager
 
 	// Ratios
-	SpawnCostRatio          float64
-	ExecuteCostRatio        float64
-	PassiveCostRatio        float64
-	ActiveRegenRatio        float64
-	UserIdleRegenRatio      float64
-	HibernationRegenRatio   float64
-	HibernationSleepMult    float64
-	CooldownPenaltyFactor   float64
+	SpawnCostRatio        float64
+	ExecuteCostRatio      float64
+	PassiveCostRatio      float64
+	ActiveRegenRatio      float64
+	UserIdleRegenRatio    float64
+	HibernationRegenRatio float64
+	HibernationSleepMult  float64
+	CooldownPenaltyFactor float64
 }
 
-func (r *ReflexDispatcher) GetSpawnCostRatio() float64 { return r.SpawnCostRatio }
-func (r *ReflexDispatcher) GetExecuteCostRatio() float64 { return r.ExecuteCostRatio }
-func (r *ReflexDispatcher) GetPassiveCostRatio() float64 { return r.PassiveCostRatio }
-func (r *ReflexDispatcher) GetActiveRegenRatio() float64 { return r.ActiveRegenRatio }
-func (r *ReflexDispatcher) GetUserIdleRegenRatio() float64 { return r.UserIdleRegenRatio }
+func (r *ReflexDispatcher) GetSpawnCostRatio() float64       { return r.SpawnCostRatio }
+func (r *ReflexDispatcher) GetExecuteCostRatio() float64     { return r.ExecuteCostRatio }
+func (r *ReflexDispatcher) GetPassiveCostRatio() float64     { return r.PassiveCostRatio }
+func (r *ReflexDispatcher) GetActiveRegenRatio() float64     { return r.ActiveRegenRatio }
+func (r *ReflexDispatcher) GetUserIdleRegenRatio() float64   { return r.UserIdleRegenRatio }
 func (r *ReflexDispatcher) GetHibernationRegenRatio() float64 { return r.HibernationRegenRatio }
 func (r *ReflexDispatcher) GetHibernationSleepMult() float64 { return r.HibernationSleepMult }
 func (r *ReflexDispatcher) GetCooldownPenaltyFactor() float64 { return r.CooldownPenaltyFactor }
@@ -72,6 +73,13 @@ func NewReflexDispatcher() *ReflexDispatcher {
 
 func (r *ReflexDispatcher) loadYAML() {
 	yamlPath := "src/ruleEngine/rules.yaml"
+	if exePath, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exePath), "src", "ruleEngine", "rules.yaml")
+		if _, err := os.Stat(candidate); err == nil {
+			yamlPath = candidate
+		}
+	}
+
 	data, err := os.ReadFile(yamlPath)
 	if err != nil {
 		utils.LogInfo("[RuleEngine] Failed to read rules.yaml, using default costs: %v", err)
@@ -84,8 +92,6 @@ func (r *ReflexDispatcher) loadYAML() {
 		return
 	}
 
-	// Only overwrite if the YAML actually set a non-zero value.
-	// This preserves the struct defaults for any key not defined in rules.yaml.
 	if config.EnergyDrainRatios.SpawnCost > 0 {
 		r.SpawnCostRatio = config.EnergyDrainRatios.SpawnCost
 	}
@@ -119,27 +125,24 @@ func (r *ReflexDispatcher) OnUserMessage(message string) {
 	utils.LogInfo("[RuleEngine] Reflex Triggered: User Message Received.")
 	r.Manager.RecordUserActivity()
 
-	// Determine STMCapacityPct and StaleContext (we'll just use HistoryManager)
 	stmContext := ""
 	if r.Context != nil && r.Context.HistoryManager != nil {
-		// EnvConfig max length is roughly 2000 for UserMessageChars, we'll use a fixed large limit for now
 		stmContext = r.Context.HistoryManager.ReadRecentContext(4000)
 	}
 	if stmContext == "" {
-		stmContext = fmt.Sprintf("User says: %s", message) // Fallback
+		stmContext = fmt.Sprintf("User says: %s", message)
 	}
 
-	// Assemble the initial context (STM)
 	ctx := vron.VRonContext{
 		STM:             stmContext,
-		LTM:             "", 
-		EnergyLevel:     r.Manager.GetEnergy(),          
-		ConsumptionRate: r.Manager.GetConsumptionRate(), 
-		Goal:            "Respond to the User",
+		LTM:             "",
+		EnergyLevel:     r.Manager.GetEnergy(),
+		ConsumptionRate: r.Manager.GetConsumptionRate(),
+		Method:          vron.MethodRespond,
+		Goal:            string(vron.MethodRespond),
 		PassedContext:   "",
 	}
 
-	// Spawn the Root VRon. Notice we pass an empty parentID because this is a root.
 	err := r.Manager.Spawn("", ctx, nil)
 	if err != nil {
 		utils.LogInfo("[RuleEngine] Reflex failed to spawn VRon: %v", err)
@@ -147,25 +150,24 @@ func (r *ReflexDispatcher) OnUserMessage(message string) {
 }
 
 // OnSubconsciousTrigger is a reflex triggered periodically during idle states.
-// It spawns an empty VRon that only has the recent STM and a subconscious prompt.
 func (r *ReflexDispatcher) OnSubconsciousTrigger() {
 	utils.LogInfo("[RuleEngine] Subconscious Trigger Fired.")
-	
+
 	stmContext := ""
 	if r.Context != nil && r.Context.HistoryManager != nil {
 		stmContext = r.Context.HistoryManager.ReadRecentContext(4000)
 	}
 
-	// Inject the subconscious cue directly into the STM block for this specific VRon
 	stmContext += "\n[System]: You are idle. The environment is quiet. Do you have any internal questions or anomalies to process?"
 
 	ctx := vron.VRonContext{
 		STM:             stmContext,
-		LTM:             "", 
-		EnergyLevel:     r.Manager.GetEnergy(),          
-		ConsumptionRate: r.Manager.GetConsumptionRate(), 
-		Goal:            "Process the environment",
-		PassedContext:   "", // Leave empty for root VRons
+		LTM:             "",
+		EnergyLevel:     r.Manager.GetEnergy(),
+		ConsumptionRate: r.Manager.GetConsumptionRate(),
+		Method:          vron.MethodReact,
+		Goal:            string(vron.MethodReact),
+		PassedContext:   "",
 	}
 
 	err := r.Manager.Spawn("", ctx, nil)

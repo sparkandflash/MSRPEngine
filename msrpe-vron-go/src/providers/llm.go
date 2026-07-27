@@ -22,7 +22,10 @@ func (p *MockLLMProvider) GenerateStructuredOutput(systemPrompt string, context 
 			"type": "object",
 			"properties": {
 				"action": {"type": "string", "enum": ["respond", "spawn_child", "update_memory", "test_result"]},
-				"goal": {"type": "string"},
+				"goal": {
+					"type": "string",
+					"enum": ["React", "Respond", "Summarise", "Test", "Abstract"]
+				},
 				"query": {"type": "string"}
 			},
 			"required": ["action", "goal", "query"]

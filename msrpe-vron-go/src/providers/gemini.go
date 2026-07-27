@@ -31,6 +31,7 @@ type geminiSchema struct {
 	Properties map[string]geminiSchema `json:"properties,omitempty"`
 	Required   []string                `json:"required,omitempty"`
 	Enum       []string                `json:"enum,omitempty"`
+	Items      *geminiSchema           `json:"items,omitempty"`
 }
 
 type geminiGenerationConfig struct {
@@ -122,15 +123,22 @@ func (p *GeminiInferenceProvider) GenerateStructured(ctx context.Context, system
 			ResponseSchema: geminiSchema{
 				Type: "object",
 				Properties: map[string]geminiSchema{
-					"action": {
-						Type: "string",
-						Enum: []string{"respond", "spawn_child", "update_memory", "test_result"},
-					},
-					"goal":  {Type: "string"},
-					"query": {Type: "string"},
-					"confidence": {Type: "integer"},
+					"response":        {Type: "string"},
+					"confidence":      {Type: "integer"},
+					"need_memory":     {Type: "boolean"},
+					"memory_query":    {Type: "string"},
+					"need_test":       {Type: "boolean"},
+					"test_query":      {Type: "string"},
+					"facts":           {Type: "array", Items: &geminiSchema{Type: "string"}},
+					"result":          {Type: "string"},
+					"reasoning":       {Type: "string"},
+					"observation":     {Type: "string"},
+					"serotonin_delta": {Type: "integer"},
+					"tasks":           {Type: "array", Items: &geminiSchema{Type: "string"}},
+					"message":         {Type: "string"},
+					"query":           {Type: "string"},
+					"action":          {Type: "string"},
 				},
-				Required: []string{"action", "goal", "query", "confidence"},
 			},
 		},
 	}

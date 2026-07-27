@@ -12,10 +12,11 @@ import (
 )
 
 // AppCore is the central dependency injection container that wires the
-// Interface, Rule Engine, and Context Manager together, mirroring the V2 pattern.
+// Interface, Rule Engine, Scheduler, and Context Manager together.
 type AppCore struct {
 	Manager    *instanceManager.Manager
 	RuleEngine *ruleEngine.ReflexDispatcher
+	Scheduler  *ruleEngine.Scheduler
 	Context    *contextManager.ContextManager
 }
 
@@ -29,7 +30,6 @@ func NewAppCore() (*AppCore, error) {
 	utils.LogInfo("Wiring AppCore Subsystems...")
 
 	// 2. Initialize Context Manager (Memory / Disk)
-	// It will independently fetch the EmbeddingProvider
 	ctxMgr, err := contextManager.NewContextManager()
 	if err != nil {
 		return nil, err
@@ -39,17 +39,19 @@ func NewAppCore() (*AppCore, error) {
 	ruleEng := ruleEngine.NewReflexDispatcher()
 
 	// 4. Initialize Instance Manager (Engine Core)
-	// It will independently fetch the InferenceProvider and validate it.
 	instMgr, err := instanceManager.NewManager()
 	if err != nil {
 		return nil, err
 	}
 	instMgr.StartMonitor(context.Background(), ctxMgr.HistoryManager)
 
-	// 5. Wire them together (The Event Highway)
+	// 5. Wire them together
 	ruleEng.Manager = instMgr
 	ruleEng.Context = ctxMgr
 	instMgr.CostProvider = ruleEng
+
+	// 6. Initialize Scheduler
+	scheduler := ruleEngine.NewScheduler(instMgr, ctxMgr)
 
 	// 10. Wire the OnRespond callback so VRon responses print to the CLI
 	instMgr.OnRespond = func(response string) {
@@ -69,7 +71,7 @@ func NewAppCore() (*AppCore, error) {
 		return result
 	}
 
-	// 12. Wire OnSaveMemory — called when a VRon outputs "update_memory"
+	// 12. Wire OnSaveMemory — called when a VRon outputs memories/facts
 	instMgr.OnSaveMemory = func(content, epType string) {
 		if err := ctxMgr.SaveEpisode(content, epType, config.LTMDefaultWeight); err != nil {
 			utils.LogDebug("Failed to save episode: %v", err)
@@ -84,6 +86,7 @@ func NewAppCore() (*AppCore, error) {
 	return &AppCore{
 		Manager:    instMgr,
 		RuleEngine: ruleEng,
+		Scheduler:  scheduler,
 		Context:    ctxMgr,
 	}, nil
 }

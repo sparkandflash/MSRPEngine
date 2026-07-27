@@ -1,11 +1,28 @@
-a vron
-- has a single system prompt.
-- a goal decided by rule engine
-- executes the goal
+vron check list
+- methods are decided deterministically
+- each vron is capable of all methods (active and idle) (consilder goals as methods)
+- each method has input and outputs
+- method list
+    - respond 
+    - consildate (generate summary) 
+    - query memory 
+    - test 
+    - react (same old mindstate scores)
+    - plan
+    - prompt user (proactive msg)
+    - context swap.
 
-now for the different goals possible. (what all the goals a vron can have)
-each goal has a input and an ouput
-each goal must use llm or embedding or chromem or even a tool call (in v2)
-each vron instance costs energy to run
+-vron rules
+- each vron is first created empty, ie make a queue of vron availablity
+- each vron has a common max context (10k chars| 2,618 tokens) and is allowed to make a single api call (or two calls: an embedding call + llm call)
+- the empty vron awaits use, and the max number of waiting vrons is decided by api limits, for now, we can have a max of 12/min (api itself allows upto 14/min)
+- the empty queue is recharged affter every 60 seconds.
+- each method costs energy, more context: more energy used
+- api calls themselves do not cost energy, but they consume empty vrons
 
-we will also do with async interface from the start.
+vron life cycle
+- adding into the queue, as a new vron, empty and inactive, with an id, status: new
+- a previous vron or determinsitic schedular uses the vron from the empty queue, assignign it a method and status: active|waiting|idle|terminated.
+- the vron starts executing, the method may call other methods, a vron cannot create a new vron, it can only use what is available in the empty vron queue.
+- the queue is refreshed every minute.
+
