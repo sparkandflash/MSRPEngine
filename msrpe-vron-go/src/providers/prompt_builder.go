@@ -13,8 +13,14 @@ func buildUserPrompt(ctx vron.VRonContext) string {
 		methodStr = ctx.Goal
 	}
 
+	mindState := ctx.MindState
+	if mindState == "" {
+		mindState = "0.90:0.30:0.00:0.50:0.10"
+	}
+
 	return fmt.Sprintf(`--- CURRENT STATE ---
 Assigned Method: %s
+Mind State (MA:UA:SE:OX:CO): %s
 Energy Level: %d / %d
 Serotonin Level (SE): %d
 Consumption Rate: %d / tick
@@ -33,6 +39,7 @@ Thread Cost: %d
 
 Execute assigned method '%s' strictly.`,
 		methodStr,
+		mindState,
 		ctx.EnergyLevel,
 		ctx.MaxEnergy,
 		ctx.SerotoninLevel,

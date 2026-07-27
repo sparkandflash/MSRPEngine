@@ -51,6 +51,7 @@ func (s *Scheduler) StartBackgroundSchedulers(ctx context.Context) {
 
 // TriggerUserMessage dispatches a MethodRespond VRon when a user message arrives.
 func (s *Scheduler) TriggerUserMessage(message string) error {
+	utils.LogInfo("[Scheduler] Triggering User Message: %s", message)
 	s.Manager.RecordUserActivity()
 
 	stmContext := ""
@@ -69,7 +70,9 @@ func (s *Scheduler) TriggerUserMessage(message string) error {
 		ConsumptionRate: s.Manager.GetConsumptionRate(),
 	}
 
-	return s.Manager.Spawn("", ctx, nil)
+	err := s.Manager.Spawn("", ctx, nil)
+	utils.LogInfo("[Scheduler] Spawn completed with err: %v", err)
+	return err
 }
 
 // TriggerSubconscious dispatches a MethodReact VRon during idle state.

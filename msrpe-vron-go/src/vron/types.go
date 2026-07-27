@@ -2,20 +2,22 @@ package vron
 
 import (
 	"context"
+	"fmt"
 )
 
 // Method represents the deterministic execution type assigned to a VRon.
 type Method string
 
 const (
-	MethodRespond     Method = "respond"
-	MethodConsolidate Method = "consolidate"
-	MethodQueryMemory Method = "query_memory"
-	MethodTest        Method = "test"
-	MethodReact       Method = "react"
-	MethodPlan        Method = "plan"
-	MethodPromptUser  Method = "prompt_user"
-	MethodContextSwap Method = "context_swap"
+	MethodRespond      Method = "respond"
+	MethodConsolidate  Method = "consolidate"
+	MethodQueryMemory  Method = "query_memory"
+	MethodTest         Method = "test"
+	MethodReact        Method = "react"
+	MethodPlan         Method = "plan"
+	MethodPromptUser   Method = "prompt_user"
+	MethodContextSwap  Method = "context_swap"
+	MethodUpdateMemory Method = "update_memory"
 )
 
 // VRonStatus represents the lifecycle state of a biological VRon cell.
@@ -29,10 +31,24 @@ const (
 	StatusTerminated VRonStatus = "terminated"
 )
 
-// VRonContext encapsulates the 5 explicit I/O scopes for a VRon.
+// MindScores represents the 5 core biological mindstate scores (MA:UA:SE:OX:CO).
+type MindScores struct {
+	MA float64 // Model Attention (0.00 - 1.00)
+	UA float64 // User Attention / Uncertainty (0.00 - 1.00)
+	SE float64 // Serotonin / Satisfaction (-1.00 - +1.00)
+	OX float64 // Oxytocin / Social Connection (0.00 - 1.00)
+	CO float64 // Cortisol / Stress (0.00 - 1.00)
+}
+
+func (ms MindScores) String() string {
+	return fmt.Sprintf("%.2f:%.2f:%.2f:%.2f:%.2f", ms.MA, ms.UA, ms.SE, ms.OX, ms.CO)
+}
+
+// VRonContext encapsulates the I/O scopes for a VRon.
 type VRonContext struct {
 	STM             string     // Short-Term Memory (Interface History)
 	LTM             string     // Long-Term Memory (Relevant Episodes from graph)
+	MindState       string     // Formatted MA:UA:SE:OX:CO mind scores string
 	EnergyLevel     int        // Current Global Energy
 	SerotoninLevel  int        // Biological drive (-100 to 100)
 	MaxEnergy       int        // Maximum capacity of the Global Energy pool
@@ -62,7 +78,7 @@ type VRonOutput struct {
 	SerotoninDelta int      `json:"serotonin_delta,omitempty"`
 	Tasks          []string `json:"tasks,omitempty"`
 	Message        string   `json:"message,omitempty"`
-	Query          string   `json:"query,omitempty"` // Legacy / payload query string
+	Query          string   `json:"query,omitempty"`  // Legacy / payload query string
 	Action         string   `json:"action,omitempty"` // Legacy payload action
 }
 

@@ -2,6 +2,8 @@ package interfaceUI
 
 import (
 	"context"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/chzyer/readline"
@@ -28,8 +30,8 @@ func (app *AppCore) RunLoop(ctx context.Context) {
 		rl.Close()
 	}()
 
-	// Redirect all standard printing to readline so it doesn't interrupt typing
-	utils.SetOutput(rl.Stdout())
+	// Use os.Stdout directly to prevent background VRon goroutine deadlocks on readline lock
+	utils.SetOutput(os.Stdout)
 
 	PrintSystemAlert("Engine Ready. Type a message below.")
 
@@ -37,6 +39,10 @@ func (app *AppCore) RunLoop(ctx context.Context) {
 		// Read CLI input
 		line, err := rl.Readline()
 		if err != nil { // EOF or interrupt or context cancel
+			if err == io.EOF {
+				// Prevent premature shutdown on piped/task stdin EOF; wait for context cancellation
+				<-ctx.Done()
+			}
 			break
 		}
 
@@ -58,7 +64,10 @@ func (app *AppCore) RunLoop(ctx context.Context) {
 
 		// 2. Route via Scheduler (or Reflex Engine fallback)
 		if app.Scheduler != nil {
-			_ = app.Scheduler.TriggerUserMessage(input)
+			if err := app.Scheduler.TriggerUserMessage(input); err != nil {
+				PrintSystemAlert("Engine alert: " + err.Error())
+				utils.LogInfo("[Scheduler] TriggerUserMessage error: %v", err)
+			}
 		} else {
 			app.RuleEngine.OnUserMessage(input)
 		}

@@ -26,9 +26,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start the background Queue loop
-	go app.Manager.RunQueue(ctx)
-
 	// Start VRon pool regeneration (batch refill every VRonPoolRefillRate, e.g. 60s)
 	config := envconfig.Load()
 	app.Manager.StartPoolRegen(ctx, config.VRonPoolRefillRate)

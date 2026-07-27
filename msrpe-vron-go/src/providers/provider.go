@@ -33,12 +33,14 @@ func NewInferenceProvider() (InferenceProvider, error) {
 	
 	var provider InferenceProvider
 	switch config.LLMProvider {
+	case "mock":
+		provider = NewMockInferenceProvider()
 	case "openai":
 		provider = NewOpenAIInferenceProvider(config.LLMBaseURL, config.LLMAPIKey, config.LLMModel, config.LLMValidationTimeout, config.LLMExecutionTimeout, config.LLMTemperature)
 	case "gemini":
 		provider = NewGeminiInferenceProvider(config.LLMAPIKey, config.LLMModel, config.LLMValidationTimeout, config.LLMExecutionTimeout)
 	default:
-		provider = NewGeminiInferenceProvider(config.LLMAPIKey, config.LLMModel, config.LLMValidationTimeout, config.LLMExecutionTimeout) // Gemini as default
+		provider = NewGeminiInferenceProvider(config.LLMAPIKey, config.LLMModel, config.LLMValidationTimeout, config.LLMExecutionTimeout)
 	}
 
 	// Self-validate credentials before boot
@@ -54,11 +56,16 @@ func NewEmbeddingProvider() EmbeddingProvider {
 	config := envconfig.Load()
 	
 	switch config.EmbProvider {
+	case "mock":
+		return NewMockEmbeddingProvider()
 	case "openai":
 		return NewOpenAIEmbeddingProvider(config.EmbBaseURL, config.EmbAPIKey, config.EmbModel, config.LLMExecutionTimeout)
 	case "gemini":
 		return NewGeminiEmbeddingProvider(config.EmbBaseURL, config.EmbAPIKey, config.EmbModel, config.LLMExecutionTimeout)
 	default:
-		return NewGeminiEmbeddingProvider(config.EmbBaseURL, config.EmbAPIKey, config.EmbModel, config.LLMExecutionTimeout) // Gemini as default
+		if config.LLMProvider == "mock" {
+			return NewMockEmbeddingProvider()
+		}
+		return NewGeminiEmbeddingProvider(config.EmbBaseURL, config.EmbAPIKey, config.EmbModel, config.LLMExecutionTimeout)
 	}
 }

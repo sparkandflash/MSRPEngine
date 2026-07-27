@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -34,19 +35,34 @@ func loadPrompt(filename string) string {
 	path := filepath.Join(resolvePromptsDir(), filename)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		// Fallback string if file cannot be read
-		return fmt.Sprintf("Execute method %s strictly.", filename)
+		return ""
 	}
 
-	content := string(data)
+	content := strings.TrimSpace(string(data))
 	promptCache.Store(filename, content)
 	return content
 }
 
-// GetMethodPrompt loads the prompt specific to the VRon's assigned method.
+// GetPersonalityPrompt loads the core personality traits from src/prompts/personality.txt.
+func GetPersonalityPrompt() string {
+	return loadPrompt("personality.txt")
+}
+
+// GetMethodPrompt loads the prompt specific to the VRon's assigned method
+// and prepends the organism personality prompt if present.
 func GetMethodPrompt(method Method) string {
 	filename := fmt.Sprintf("method_%s.txt", string(method))
-	return loadPrompt(filename)
+	methodPrompt := loadPrompt(filename)
+	if methodPrompt == "" {
+		methodPrompt = fmt.Sprintf("Execute method %s strictly.", string(method))
+	}
+
+	personality := GetPersonalityPrompt()
+	if personality != "" {
+		return fmt.Sprintf("--- ORGANISM PERSONALITY & TRAITS ---\n%s\n\n--- OPERATIONAL METHOD (%s) ---\n%s", personality, string(method), methodPrompt)
+	}
+
+	return methodPrompt
 }
 
 // GetVRonIdentityPrompt loads the master system prompt for default/legacy paths.

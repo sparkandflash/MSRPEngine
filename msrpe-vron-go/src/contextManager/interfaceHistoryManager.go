@@ -13,8 +13,9 @@ import (
 
 // InterfaceHistoryManager handles the rolling flat-file log of all raw I/O (STM).
 type InterfaceHistoryManager struct {
-	mu       sync.Mutex
-	FilePath string
+	mu             sync.Mutex
+	FilePath       string
+	StartupContext string
 }
 
 type HistoryEntry struct {
@@ -56,7 +57,7 @@ func (ihm *InterfaceHistoryManager) Append(sender string, message string) error 
 }
 
 // ReadRecentContext reads the JSONL history file from bottom to top,
-// accumulating formatted strings until maxChars is reached, returning the STM block.
+// prepending StartupContext if available, returning the active context block.
 func (ihm *InterfaceHistoryManager) ReadRecentContext(maxChars int) string {
 	ihm.mu.Lock()
 	defer ihm.mu.Unlock()
@@ -64,10 +65,10 @@ func (ihm *InterfaceHistoryManager) ReadRecentContext(maxChars int) string {
 	f, err := os.Open(ihm.FilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return ""
+			return ihm.StartupContext
 		}
 		utils.LogDebug("Failed to open history for read: %v", err)
-		return ""
+		return ihm.StartupContext
 	}
 	defer f.Close()
 
@@ -94,5 +95,14 @@ func (ihm *InterfaceHistoryManager) ReadRecentContext(maxChars int) string {
 		totalChars += len(formatted)
 	}
 
-	return strings.Join(finalBlocks, "")
+	result := strings.Join(finalBlocks, "")
+	if ihm.StartupContext != "" {
+		if result != "" {
+			result = ihm.StartupContext + "\n\n" + result
+		} else {
+			result = ihm.StartupContext
+		}
+	}
+
+	return result
 }

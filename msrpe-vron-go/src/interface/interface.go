@@ -43,6 +43,7 @@ func NewAppCore() (*AppCore, error) {
 	if err != nil {
 		return nil, err
 	}
+	go instMgr.RunQueue(context.Background())
 	instMgr.StartMonitor(context.Background(), ctxMgr.HistoryManager)
 
 	// 5. Wire them together
@@ -53,32 +54,58 @@ func NewAppCore() (*AppCore, error) {
 	// 6. Initialize Scheduler
 	scheduler := ruleEngine.NewScheduler(instMgr, ctxMgr)
 
+	// 7. On Startup: Load latest main consolidated episode (ep_*.json) into active in-memory context
+	latestConsolidated, err := ctxMgr.GetLatestConsolidatedEpisode()
+	if err == nil && latestConsolidated != "" {
+		ctxMgr.HistoryManager.StartupContext = latestConsolidated
+		utils.LogInfo("[AppCore] Restored latest consolidated episode into active memory context.")
+	}
+
 	// 10. Wire the OnRespond callback so VRon responses print to the CLI
 	instMgr.OnRespond = func(response string) {
-		PrintVRonResponse("msr", response)
-		if err := ctxMgr.HistoryManager.Append("MSR", response); err != nil {
-			utils.LogDebug("Failed to log MSR response to history: %v", err)
+		PrintVRonResponse(config.OrganismName, response)
+		if err := ctxMgr.HistoryManager.Append(config.OrganismName, response); err != nil {
+			utils.LogDebug("Failed to log %s response to history: %v", config.OrganismName, err)
 		}
 	}
 
 	// 11. Wire OnRetrieveLTM — called before each VRon executes to inject relevant memories
 	instMgr.OnRetrieveLTM = func(query string) string {
+		utils.LogInfo("[OnRetrieveLTM] Searching LTM for query: %q", query)
 		result, err := ctxMgr.SearchLTM(query, config.LTMMaxResults)
 		if err != nil {
-			utils.LogDebug("LTM retrieval failed: %v", err)
+			utils.LogInfo("[OnRetrieveLTM] Search failed: %v", err)
+			return ""
+		}
+		utils.LogInfo("[OnRetrieveLTM] Search complete (%d chars retrieved)", len(result))
+		return result
+	}
+
+	// Wire OnRetrieveLTMConsolidated — used by ContextSwap to exclude fact_ episodes
+	instMgr.OnRetrieveLTMConsolidated = func(query string) string {
+		result, err := ctxMgr.SearchLTMConsolidatedOnly(query, config.LTMMaxResults)
+		if err != nil {
+			utils.LogDebug("Consolidated LTM search failed: %v", err)
 			return ""
 		}
 		return result
 	}
 
-	// 12. Wire OnSaveMemory — called when a VRon outputs memories/facts
+	// 12. Wire OnSaveMemory — called when a VRon outputs single memories/facts
 	instMgr.OnSaveMemory = func(content, epType string) {
 		if err := ctxMgr.SaveEpisode(content, epType, config.LTMDefaultWeight); err != nil {
 			utils.LogDebug("Failed to save episode: %v", err)
 		}
 	}
 
-	// 13. Wire OnSubconsciousTrigger - called during idle loops to spawn spontaneous thought
+	// 13. Wire OnSaveSpecialEpisode — packages explicit facts into character-chunked fact_<timestamp> files
+	instMgr.OnSaveSpecialEpisode = func(facts []string, epType string, mindState string) {
+		if err := ctxMgr.SaveSpecialEpisode(facts, epType, mindState, config.LTMDefaultWeight, config.MaxResponseChars); err != nil {
+			utils.LogDebug("Failed to save fact episode: %v", err)
+		}
+	}
+
+	// 14. Wire OnSubconsciousTrigger - called during idle loops to spawn spontaneous thought
 	instMgr.OnSubconsciousTrigger = func() {
 		ruleEng.OnSubconsciousTrigger()
 	}

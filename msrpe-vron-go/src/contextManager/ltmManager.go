@@ -13,6 +13,11 @@ func (cm *ContextManager) SearchLTM(query string, maxResults int) (string, error
 		return "", nil
 	}
 
+	col := cm.IndexManager.Client.GetCollection("episodes", nil)
+	if col == nil || col.Count() == 0 {
+		return "", nil
+	}
+
 	episodes, err := cm.IndexManager.QueryEpisodes(query, maxResults)
 	if err != nil {
 		utils.LogDebug("LTM search failed: %v", err)
@@ -34,4 +39,39 @@ func (cm *ContextManager) SearchLTM(query string, maxResults int) (string, error
 	result := strings.TrimSpace(sb.String())
 	utils.LogDebug("LTM Search | Query: %q | Results: %d", query, len(episodes))
 	return result, nil
+}
+
+// SearchLTMConsolidatedOnly queries the vector DB excluding fact_ / special_fact episodes.
+// Used by ContextSwap to only refresh with main consolidated summary episodes.
+func (cm *ContextManager) SearchLTMConsolidatedOnly(query string, maxResults int) (string, error) {
+	if query == "" {
+		return "", nil
+	}
+
+	col := cm.IndexManager.Client.GetCollection("episodes", nil)
+	if col == nil || col.Count() == 0 {
+		return "", nil
+	}
+
+	episodes, err := cm.IndexManager.QueryEpisodes(query, maxResults)
+	if err != nil {
+		return "", err
+	}
+
+	var sb strings.Builder
+	count := 0
+	for _, ep := range episodes {
+		// Filter out fact_ and special_fact episodes
+		if strings.HasPrefix(ep.Type, "fact_") || ep.Type == "special_fact" {
+			continue
+		}
+		count++
+		sb.WriteString(fmt.Sprintf("[Consolidated Memory %d | Type: %s]\n%s\n\n", count, ep.Type, ep.Content))
+	}
+
+	if count == 0 {
+		return "", nil
+	}
+
+	return strings.TrimSpace(sb.String()), nil
 }

@@ -13,6 +13,7 @@ import (
 // EnvConfig holds all absolute capacity limits loaded from .env
 type EnvConfig struct {
 	// API Credentials & Routing
+	OrganismName    string
 	LLMProvider     string
 	LLMAPIKey       string
 	LLMModel        string
@@ -58,8 +59,17 @@ func Load() *EnvConfig {
 			utils.LogInfo("[EnvConfig] Warning: could not load .env file: %v", err)
 		}
 
+		orgName := os.Getenv("ORGANISM_NAME")
+		if orgName == "" {
+			orgName = os.Getenv("PERSONALITY_NAME")
+		}
+		if orgName == "" {
+			orgName = "Lyra"
+		}
+
 		configInstance = &EnvConfig{
-		LLMProvider:            os.Getenv("VRON_LLM_PROVIDER"),
+			OrganismName:           orgName,
+			LLMProvider:            os.Getenv("VRON_LLM_PROVIDER"),
 		LLMAPIKey:              os.Getenv("VRON_LLM_API_KEY"),
 		LLMModel:               os.Getenv("VRON_LLM_MODEL"),
 		LLMBaseURL:             os.Getenv("VRON_LLM_BASE_URL"),
@@ -78,7 +88,7 @@ func Load() *EnvConfig {
 		LTMMaxResults:          parseInt("LTM_MAX_RESULTS", 5),
 		LTMDefaultWeight:       parseInt("LTM_DEFAULT_WEIGHT", 70),
 		BaseLifetime:           time.Duration(parseInt("VRON_BASE_LIFETIME_SEC", 300)) * time.Second,
-		UserIdleTimeout:        time.Duration(parseInt("USER_IDLE_TIMEOUT_MINUTES", 5)) * time.Minute,
+		UserIdleTimeout:        time.Duration(parseInt("USER_IDLE_TIMEOUT_SEC", 60)) * time.Second,
 		HibernationTimeout:     time.Duration(parseInt("ENGINE_HIBERNATION_TIMEOUT_MINUTES", 15)) * time.Minute,
 		VRonPoolMaxCapacity:    parseInt("VRON_POOL_MAX_CAPACITY", 12),
 		VRonPoolRefillRate:     time.Duration(parseInt("VRON_POOL_REFILL_RATE_SEC", 60)) * time.Second,
