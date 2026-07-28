@@ -105,7 +105,12 @@ func NewAppCore() (*AppCore, error) {
 		}
 	}
 
-	// 14. Wire OnSubconsciousTrigger - called during idle loops to spawn spontaneous thought
+	// 14. Wire OnAddShortTermFact — pushes retrieved/new facts into the active Short-Term Fact Store (STFS)
+	instMgr.OnAddShortTermFact = func(fact string) {
+		ctxMgr.HistoryManager.AddShortTermFact(fact)
+	}
+
+	// 15. Wire OnSubconsciousTrigger - called during idle loops to spawn spontaneous thought
 	instMgr.OnSubconsciousTrigger = func() {
 		ruleEng.OnSubconsciousTrigger()
 	}

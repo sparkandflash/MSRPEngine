@@ -11,17 +11,62 @@ import (
 	"time"
 )
 
-// InterfaceHistoryManager handles the rolling flat-file log of all raw I/O (STM).
+// InterfaceHistoryManager handles the rolling flat-file log of all raw I/O (STM)
+// and maintains the Short-Term Fact Store (STFS) holding up to 10 active in-memory facts.
 type InterfaceHistoryManager struct {
-	mu             sync.Mutex
-	FilePath       string
-	StartupContext string
+	mu                 sync.Mutex
+	FilePath           string
+	StartupContext     string
+	ShortTermFactStore []string // Active in-memory fact buffer (max 10 facts)
 }
 
 type HistoryEntry struct {
 	Timestamp string `json:"timestamp"`
 	Sender    string `json:"sender"`
 	Message   string `json:"message"`
+}
+
+// AddShortTermFact adds a retrieved or newly saved fact into the in-memory Short-Term Fact Store (STFS),
+// maintaining a maximum capacity of 10 facts (LRU/FIFO replacement).
+func (ihm *InterfaceHistoryManager) AddShortTermFact(fact string) {
+	ihm.mu.Lock()
+	defer ihm.mu.Unlock()
+
+	fact = strings.TrimSpace(fact)
+	if fact == "" {
+		return
+	}
+
+	// Deduplicate within the short-term fact buffer (case-insensitive)
+	for i, existing := range ihm.ShortTermFactStore {
+		if strings.EqualFold(existing, fact) {
+			// Move to end (most recently accessed)
+			ihm.ShortTermFactStore = append(ihm.ShortTermFactStore[:i], ihm.ShortTermFactStore[i+1:]...)
+			ihm.ShortTermFactStore = append(ihm.ShortTermFactStore, fact)
+			return
+		}
+	}
+
+	// Evict oldest if capacity (10 facts) reached
+	if len(ihm.ShortTermFactStore) >= 10 {
+		ihm.ShortTermFactStore = ihm.ShortTermFactStore[1:]
+	}
+	ihm.ShortTermFactStore = append(ihm.ShortTermFactStore, fact)
+	utils.LogInfo("[STFS] Short-Term Fact Store updated (%d/10 facts): %q", len(ihm.ShortTermFactStore), fact)
+}
+
+// GetShortTermFactStoreFormatted returns the active STFS formatted for prompt injection.
+func (ihm *InterfaceHistoryManager) GetShortTermFactStoreFormatted() string {
+	if len(ihm.ShortTermFactStore) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("--- SHORT-TERM FACT STORE (ACTIVE IN-MEMORY FACTS) ---\n")
+	for i, fact := range ihm.ShortTermFactStore {
+		sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, fact))
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 // Append writes a single line (message, system event) to the interface history log.
@@ -57,7 +102,7 @@ func (ihm *InterfaceHistoryManager) Append(sender string, message string) error 
 }
 
 // ReadRecentContext reads the JSONL history file from bottom to top,
-// prepending StartupContext if available, returning the active context block.
+// prepending StartupContext and the Short-Term Fact Store (STFS), returning the active context block.
 func (ihm *InterfaceHistoryManager) ReadRecentContext(maxChars int) string {
 	ihm.mu.Lock()
 	defer ihm.mu.Unlock()
@@ -65,10 +110,10 @@ func (ihm *InterfaceHistoryManager) ReadRecentContext(maxChars int) string {
 	f, err := os.Open(ihm.FilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return ihm.StartupContext
+			return ihm.formatContextBlock("")
 		}
 		utils.LogDebug("Failed to open history for read: %v", err)
-		return ihm.StartupContext
+		return ihm.formatContextBlock("")
 	}
 	defer f.Close()
 
@@ -95,14 +140,26 @@ func (ihm *InterfaceHistoryManager) ReadRecentContext(maxChars int) string {
 		totalChars += len(formatted)
 	}
 
-	result := strings.Join(finalBlocks, "")
+	rawHistory := strings.Join(finalBlocks, "")
+	return ihm.formatContextBlock(rawHistory)
+}
+
+// formatContextBlock combines StartupContext, STFS, and rawHistory.
+func (ihm *InterfaceHistoryManager) formatContextBlock(rawHistory string) string {
+	var parts []string
+
 	if ihm.StartupContext != "" {
-		if result != "" {
-			result = ihm.StartupContext + "\n\n" + result
-		} else {
-			result = ihm.StartupContext
-		}
+		parts = append(parts, ihm.StartupContext)
 	}
 
-	return result
+	stfs := ihm.GetShortTermFactStoreFormatted()
+	if stfs != "" {
+		parts = append(parts, stfs)
+	}
+
+	if rawHistory != "" {
+		parts = append(parts, rawHistory)
+	}
+
+	return strings.Join(parts, "\n\n")
 }

@@ -76,6 +76,7 @@ type Manager struct {
 	OnRetrieveLTMConsolidated func(query string) string
 	OnSaveMemory              func(content, epType string)
 	OnSaveSpecialEpisode      func(facts []string, epType string, mindState string)
+	OnAddShortTermFact        func(fact string)
 	OnSubconsciousTrigger     func()
 
 	vronPool         chan *PendingVRon
@@ -542,22 +543,6 @@ func (m *Manager) RunQueue(ctx context.Context) {
 
 			switch nextVRon.Method {
 			case vron.MethodRespond:
-				if m.OnRetrieveLTM != nil && nextVRon.Context.LTM == "" && nextVRon.Context.PassedContext == "" {
-					ltmQuery := ""
-					if stm := nextVRon.Context.STM; stm != "" {
-						lines := strings.Split(strings.TrimSpace(stm), "\n")
-						for i := len(lines) - 1; i >= 0; i-- {
-							if trimmed := strings.TrimSpace(lines[i]); trimmed != "" {
-								ltmQuery = trimmed
-								break
-							}
-						}
-					}
-					if ltmQuery != "" {
-						nextVRon.Context.LTM = m.OnRetrieveLTM(ltmQuery)
-					}
-				}
-
 				utils.LogInfo("[InstanceManager] Sending LLM request for VRon %s (Method: %s)...", nextVRon.ID, nextVRon.Method)
 				output, err := m.Provider.GenerateStructured(ctx, prompt, nextVRon.Context)
 				if err != nil {
@@ -676,6 +661,9 @@ func (m *Manager) RunQueue(ctx context.Context) {
 						query = nextVRon.Context.STM
 					}
 					retrieved = m.OnRetrieveLTM(query)
+					if retrieved != "" && m.OnAddShortTermFact != nil {
+						m.OnAddShortTermFact(retrieved)
+					}
 				}
 				nextVRon.Status = vron.StatusTerminated
 				m.resumeParent(nextVRon.ParentID, retrieved, nextVRon.ThreadCost)

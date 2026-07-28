@@ -101,6 +101,13 @@ func (s *Scheduler) TriggerConsolidation() error {
 		stmContext = s.Context.HistoryManager.ReadRecentContext(8000)
 	}
 
+	if s.Context != nil {
+		activeFacts := s.Context.GetAllStoredFactsFormatted()
+		if activeFacts != "" {
+			stmContext = activeFacts + "\n\n" + stmContext
+		}
+	}
+
 	ctx := vron.VRonContext{
 		STM:             stmContext,
 		Method:          vron.MethodConsolidate,
