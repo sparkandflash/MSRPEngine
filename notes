@@ -1,1 +1,10 @@
-fix
+see my grand evil design here
+im going to make it hallucinate the entire interface log based on what's in the context. and have it naturally correct it's prediction as 
+real interface data comes in, more it matches, it gets tagged as a positive fact, those which do not match, gets tagged as negative fact.
+
+the challenges i know is, what topic to create the hallucination on, like how likely would it able to share the topic of a potential conversation in the real interface?
+it is easy when context is small, but if it had talked to users on many topics, then it would need to know what topic to hallucinate about. 
+sure i can pick the last discussed topic and store it when user revisits that topic again.
+
+the llm will get the context, on what that log is
+or we can have a different vron running in idle, to compare it against stored interface logs.

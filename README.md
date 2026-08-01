@@ -48,6 +48,17 @@ The detailed evolutionary plan for MSRPEngine, including the upcoming memory rew
 
 Please see the [ROADMAP.md](ROADMAP.md) for full details.
 
+### Updates
+
+#### 2026-08-02 — Threads, Context Chunking, V-Interfaces & Thread Pool
+
+Four new primitives added to the VRon architecture ([vron-roadmap.md](vron-roadmap.md)):
+
+- **Threads & Nodes** — A thread is a linear, ID'd grouping of nodes. Threads are composable: a thread can itself be a node inside another thread, enabling recursive reasoning hierarchies.
+- **Context Chunking** — Long reasoning chains are split into sub-threads (chunks) and processed sequentially via multiple API calls until the response resolves or all chunks are exhausted.
+- **V-Interfaces** — VRons spawn proto-threads from active conversations and simulate predicted interface logs (engine response, user response, system texts). Designed to integrate with context chunking for multi-chunk idle simulations.
+- **Thread Pool** — A registry of unresolved threads. Threads are created or resumed based on active topic; VRons extend or branch them. All threads link to a single temporal spine preserving chronological memory order across topic changes.
+
 ## Community
 
 Join our [Discord Server](https://discord.gg/9XZCFdYyr) to discuss the project, share personas, and get help.
